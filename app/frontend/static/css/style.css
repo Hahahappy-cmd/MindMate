@@ -1,0 +1,74 @@
+/* Custom Styles for MindMate */
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.min-vh-75 {
+    min-height: 75vh;
+}
+
+/* Emotion color classes */
+.emotion-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: white;
+}
+
+/* Sentiment indicators */
+.sentiment-positive {
+    color: #28a745;
+}
+
+.sentiment-negative {
+    color: #dc3545;
+}
+
+.sentiment-neutral {
+    color: #6c757d;
+}
+
+/* Journal entry cards */
+.entry-card {
+    border-left: 4px solid;
+    transition: all 0.3s ease;
+}
+
+.entry-card:hover {
+    transform: translateX(5px);
+}
+
+/* Dashboard cards */
+.stat-card {
+    border-radius: 1rem;
+    overflow: hidden;
+}
+
+/* Chart containers */
+.chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+
+/* Loading spinner */
+.spinner-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .display-4 {
+        font-size: 2.5rem;
+    }
+    
+    .card-body {
+        padding: 1.5rem !important;
+    }
+}

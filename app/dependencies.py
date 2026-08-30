@@ -1,69 +1,124 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from jose import JWTError, jwt
+from jose import JWTError
 from .database import get_db
 from . import models
-from .auth import SECRET_KEY, ALGORITHM, verify_token
+from .auth import verify_token, SECRET_KEY, ALGORITHM
+from typing import Optional
+import logging
 
+logger = logging.getLogger(__name__)
 
-security = HTTPBearer()
+class OptionalHTTPBearer(HTTPBearer):
+    async def __call__(self, request: Request) -> Optional[HTTPAuthorizationCredentials]:
+        try:
+            return await super().__call__(request)
+        except HTTPException:
+            return None
+
+security = OptionalHTTPBearer(auto_error=False)
+
+def get_token_from_request(request: Request) -> Optional[str]:
+    """
+    Extract token from either Authorization header or cookie
+    """
+    # Try to get from Authorization header first
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        if auth_header.startswith("Bearer "):
+            return auth_header[7:]
+        return auth_header
+    
+    # Try to get from cookie
+    token_cookie = request.cookies.get("access_token")
+    if token_cookie:
+        if token_cookie.startswith("Bearer "):
+            return token_cookie[7:]
+        return token_cookie
+    
+    return None
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db)
 ):
+    """
+    Required authentication - raises 401 if no valid token
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    try:
+    # Try to get token from either source
+    token = None
+    if credentials:
         token = credentials.credentials
-        
-        if token.startswith("Bearer "):
-            token = token[7:]
-            
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        
-        if username is None:
-            raise credentials_exception
-        
-    except JWTError as e:
+    else:
+        token = get_token_from_request(request)
+    
+    if not token:
+        logger.warning("No credentials provided")
         raise credentials_exception
     
-    user = db.query(models.User).filter(models.User.username == username).first()
-
-    if user is None:
-        raise credentials_exception
-    
-    return user
-
-def get_current_user_optional(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
-    """
-    Optional dependency - returns user if authenticated, None otherwise
-    """
     try:
-        token = credentials.credentials
         if token.startswith("Bearer "):
             token = token[7:]
         
         payload = verify_token(token)
-        if payload is None:
+        if not payload:
+            raise credentials_exception
+        
+        username: str = payload.get("sub")
+        if not username:
+            raise credentials_exception
+        
+        user = db.query(models.User).filter(models.User.username == username).first()
+        if not user:
+            raise credentials_exception
+        
+        return user
+        
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
+        raise credentials_exception
+
+def get_current_user_optional(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """
+    Optional authentication - returns user if valid token, None otherwise
+    """
+    try:
+        # Try to get token from either source
+        token = None
+        if credentials:
+            token = credentials.credentials
+        else:
+            token = get_token_from_request(request)
+        
+        if not token:
+            return None
+        
+        if token.startswith("Bearer "):
+            token = token[7:]
+        
+        payload = verify_token(token)
+        if not payload:
             return None
         
         username: str = payload.get("sub")
-        token_type: str = payload.get("type")
-        
-        if username is None or token_type != "access":
+        if not username:
             return None
         
         user = db.query(models.User).filter(models.User.username == username).first()
         return user
-    except Exception:
+        
+    except Exception as e:
+        logger.debug(f"Optional auth error: {e}")
         return None

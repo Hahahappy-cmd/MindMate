@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - MindMate{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Welcome Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1 class="display-5">
+                    <i class="fas fa-smile me-3 text-primary"></i>
+                    Welcome back, <span id="username">{{ current_user.username if current_user else 'Friend' }}</span>!
+                </h1>
+                <div>
+                    <a href="/journal" class="btn btn-primary me-2">
+                        <i class="fas fa-pen me-2"></i>New Entry
+                    </a>
+                    <a href="/logout" class="btn btn-outline-danger">
+                        <i class="fas fa-sign-out-alt me-2"></i>Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="card card-shadow border-0 bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-white-50 mb-2">Total Entries</h6>
+                            <h2 class="mb-0" id="total-entries">0</h2>
+                        </div>
+                        <i class="fas fa-book-open fa-3x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-3">
+            <div class="card card-shadow border-0 bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-white-50 mb-2">Current Streak</h6>
+                            <h2 class="mb-0" id="current-streak">0</h2>
+                        </div>
+                        <i class="fas fa-fire fa-3x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-3">
+            <div class="card card-shadow border-0 bg-info text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-white-50 mb-2">Mood Score</h6>
+                            <h2 class="mb-0" id="avg-mood">0.0</h2>
+                        </div>
+                        <i class="fas fa-chart-line fa-3x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3 mb-3">
+            <div class="card card-shadow border-0 bg-warning text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-white-50 mb-2">Last Entry</h6>
+                            <h6 class="mb-0" id="last-entry">Never</h6>
+                        </div>
+                        <i class="fas fa-clock fa-3x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Entries -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card card-shadow border-0">
+                <div class="card-header bg-transparent border-0">
+                    <h4 class="mb-0">
+                        <i class="fas fa-history me-2 text-primary"></i>
+                        Recent Journal Entries
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div id="entries-container">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Emotion Trends -->
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <div class="card card-shadow border-0 h-100">
+                <div class="card-header bg-transparent border-0">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-pie me-2 text-primary"></i>
+                        Emotion Distribution
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="emotionChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6 mb-3">
+            <div class="card card-shadow border-0 h-100">
+                <div class="card-header bg-transparent border-0">
+                    <h5 class="mb-0">
+                        <i class="fas fa-calendar-alt me-2 text-primary"></i>
+                        Recent Activity
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="activity-timeline">
+                        <p class="text-muted text-center">No recent activity</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Chart.js for charts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+// Fetch user data
+async function fetchUserData() {
+    try {
+        const response = await fetch('/api/users/me');
+        if (response.status === 401) {
+            window.location.replace('/login');
+            return;
+        }
+        if (!response.ok) throw new Error('Failed to fetch user');
+        const user = await response.json();
+        document.getElementById('username').textContent = user.username;
+    } catch (error) {
+        console.error('Error fetching user:', error);
+    }
+}
+
+// Fetch journal entries
+async function fetchEntries() {
+    try {
+        const response = await fetch('/api/entries/');
+        if (response.status === 401) {
+            window.location.replace('/login');
+            return;
+        }
+        if (!response.ok) throw new Error('Failed to fetch entries');
+        const entries = await response.json();
+        
+        // Update stats
+        document.getElementById('total-entries').textContent = entries.length;
+        
+        if (entries.length > 0) {
+            // Calculate average mood
+            const moods = entries.filter(e => e.mood_score).map(e => e.mood_score);
+            if (moods.length > 0) {
+                const avgMood = moods.reduce((a, b) => a + b, 0) / moods.length;
+                document.getElementById('avg-mood').textContent = avgMood.toFixed(1);
+            }
+            
+            // Last entry date
+            const lastEntry = new Date(entries[0].created_at);
+            document.getElementById('last-entry').textContent = 
+                lastEntry.toLocaleDateString();
+            
+            // Display entries
+            displayEntries(entries);
+            
+            // Create emotion chart
+            createEmotionChart(entries);
+            
+            // Update activity timeline
+            updateTimeline(entries);
+        } else {
+            document.getElementById('entries-container').innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-journal-whills fa-4x text-muted mb-3"></i>
+                    <p class="lead">No journal entries yet</p>
+                    <a href="/journal" class="btn btn-primary">
+                        <i class="fas fa-pen me-2"></i>Create Your First Entry
+                    </a>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error fetching entries:', error);
+        document.getElementById('entries-container').innerHTML = `
+            <div class="alert alert-danger">
+                Failed to load entries. Please try again.
+            </div>
+        `;
+    }
+}
+
+function displayEntries(entries) {
+    const container = document.getElementById('entries-container');
+    const recentEntries = entries.slice(0, 5);
+    
+    container.innerHTML = recentEntries.map(entry => `
+        <div class="card mb-3 border-0 bg-light">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="mb-2">
+                            ${new Date(entry.created_at).toLocaleDateString('en-US', {
+                                weekday: 'long',
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                            })}
+                        </h6>
+                        <p class="mb-2">${entry.content.substring(0, 150)}${entry.content.length > 150 ? '...' : ''}</p>
+                        ${entry.mood ? `
+                            <span class="badge bg-primary me-2">
+                                <i class="fas fa-smile me-1"></i>${entry.mood}
+                            </span>
+                        ` : ''}
+                        ${entry.tags ? entry.tags.split(',').map(tag => `
+                            <span class="badge bg-secondary me-1">#${tag.trim()}</span>
+                        `).join('') : ''}
+                    </div>
+                    <a href="/journal/${entry.id}" class="btn btn-sm btn-outline-primary">
+                        Read More
+                    </a>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    if (entries.length > 5) {
+        container.innerHTML += `
+            <div class="text-center mt-3">
+                <a href="/journal" class="btn btn-outline-primary">
+                    View All Entries (${entries.length})
+                </a>
+            </div>
+        `;
+    }
+}
+
+function createEmotionChart(entries) {
+    const emotions = {};
+    entries.forEach(entry => {
+        if (entry.mood) {
+            emotions[entry.mood] = (emotions[entry.mood] || 0) + 1;
+        }
+    });
+    
+    const ctx = document.getElementById('emotionChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(emotions),
+            datasets: [{
+                data: Object.values(emotions),
+                backgroundColor: [
+                    '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+function updateTimeline(entries) {
+    const timeline = document.getElementById('activity-timeline');
+    const last7Days = entries.slice(0, 7);
+    
+    if (last7Days.length === 0) {
+        timeline.innerHTML = '<p class="text-muted text-center">No recent activity</p>';
+        return;
+    }
+    
+    timeline.innerHTML = last7Days.map(entry => `
+        <div class="d-flex align-items-center mb-3">
+            <div class="me-3">
+                <i class="fas fa-circle text-${getMoodColor(entry.mood)}"></i>
+            </div>
+            <div class="flex-grow-1">
+                <small class="text-muted">
+                    ${new Date(entry.created_at).toLocaleDateString()}
+                </small>
+                <p class="mb-0">${entry.content.substring(0, 50)}...</p>
+            </div>
+        </div>
+    `).join('');
+}
+
+function getMoodColor(mood) {
+    const colors = {
+        'happy': 'success',
+        'sad': 'info',
+        'angry': 'danger',
+        'anxious': 'warning',
+        'calm': 'primary'
+    };
+    return colors[mood?.toLowerCase()] || 'secondary';
+}
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', () => {
+    fetchUserData();
+    fetchEntries();
+});
+</script>
+
+<style>
+.card-shadow {
+    box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+    transition: transform 0.2s;
+}
+
+.card-shadow:hover {
+    transform: translateY(-5px);
+}
+
+.opacity-50 {
+    opacity: 0.5;
+}
+</style>
+{% endblock %}
