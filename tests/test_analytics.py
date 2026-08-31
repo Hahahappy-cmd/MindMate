@@ -8,8 +8,9 @@ def test_empty_weekly_summary(client, auth_headers):
     assert data["summary"] == "No entries this week."
 
 
-def test_dashboard_uses_ai_sentiment_and_emotions(client, auth_headers):
-    client.post("/api/entries/", headers=auth_headers, json={"title":"Good day","content":"I feel happy and wonderful."})
+def test_dashboard_uses_ai_sentiment_and_emotions(client, auth_headers, run_pending_analysis):
+    entry_id = client.post("/api/entries/", headers=auth_headers, json={"title":"Good day","content":"I feel happy and wonderful."}).json()["id"]
+    run_pending_analysis(entry_id)
     data = client.get("/api/entries/dashboard", headers=auth_headers).json()
     assert data["total_entries"] == 1
     assert data["average_sentiment"] > 0

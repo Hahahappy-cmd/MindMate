@@ -2,14 +2,55 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 import json
+import uuid
+import logging
 from datetime import datetime, timedelta, timezone
 from ..database import get_db
 from .. import models, schemas
 from ..AI import sentiment
-from ..services.analysis import analyze_entry, summarize_entries
+from ..services.analysis import summarize_entries
+from ..services.long_term_analytics import VALID_PERIODS, build_long_term_analytics
+from ..queue import enqueue_analysis_job
 from ..dependencies import get_current_user, require_csrf
 
 router = APIRouter(prefix="/entries", tags=["entries"])
+logger = logging.getLogger(__name__)
+
+
+DERIVED_FIELDS = (
+    "sentiment_score", "sentiment_label", "sentiment_strength", "analysis_confidence",
+    "analysis_method", "analysis_version", "analyzed_at", "subjectivity", "word_count",
+    "emotion_data", "dominant_emotion", "emotional_intensity", "emotion_model_name",
+    "emotion_model_version", "emotion_score_semantics", "emotion_threshold", "emotion_chunks",
+    "key_phrases", "theme_embedding", "theme_embedding_model", "theme_embedding_version",
+    "theme_embedding_hash", "theme_embedded_at",
+)
+
+
+def prepare_analysis(entry: models.JournalEntry) -> str:
+    for field in DERIVED_FIELDS:
+        setattr(entry, field, None)
+    generation = str(uuid.uuid4())
+    entry.analysis_state = "pending"
+    entry.analysis_generation = generation
+    entry.analysis_job_id = None
+    entry.analysis_error = None
+    entry.analysis_attempts = 0
+    entry.analysis_queued_at = datetime.now(timezone.utc)
+    entry.analysis_started_at = None
+    entry.analysis_completed_at = None
+    return generation
+
+
+def enqueue_or_mark_failed(entry: models.JournalEntry, generation: str, db: Session) -> None:
+    try:
+        entry.analysis_job_id = enqueue_analysis_job(entry.id, generation)
+    except Exception as exc:
+        logger.warning("Could not enqueue AI analysis for entry %s: %s", entry.id, type(exc).__name__)
+        entry.analysis_state = "failed"
+        entry.analysis_error = "AI analysis could not be queued. Please try editing the entry again."
+    db.commit()
+    db.refresh(entry)
 
 def serialize_entry(entry: models.JournalEntry) -> dict:
     def load_json(value, fallback):
@@ -22,6 +63,13 @@ def serialize_entry(entry: models.JournalEntry) -> dict:
 
     return {
         "id": entry.id,
+        "analysis_state": entry.analysis_state,
+        "analysis_job_id": entry.analysis_job_id,
+        "analysis_error": entry.analysis_error,
+        "analysis_attempts": entry.analysis_attempts or 0,
+        "analysis_queued_at": entry.analysis_queued_at,
+        "analysis_started_at": entry.analysis_started_at,
+        "analysis_completed_at": entry.analysis_completed_at,
         "title": entry.title,
         "content": entry.content,
         "sentiment_score": entry.sentiment_score,
@@ -55,36 +103,16 @@ def create_entry(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Enhanced sentiment analysis
-    sentiment_result = analyze_entry(entry.content)
-    
-    # Create entry with enhanced data
     db_entry = models.JournalEntry(
         title=entry.title,
         content=entry.content,
-        sentiment_score=sentiment_result["sentiment_score"],
-        sentiment_label=sentiment_result["sentiment_label"],
-        sentiment_strength=sentiment_result.get("sentiment_strength"),
-        analysis_confidence=sentiment_result.get("analysis_confidence"),
-        analysis_method=sentiment_result.get("analysis_method"),
-        analysis_version=sentiment_result.get("analysis_version"),
-        analyzed_at=sentiment_result.get("analyzed_at"),
-        subjectivity=sentiment_result.get("subjectivity"),
-        word_count=sentiment_result.get("word_count"),
-        emotion_data=json.dumps(sentiment_result.get("emotions", {})),
-        dominant_emotion=sentiment_result.get("dominant_emotion"),
-        emotional_intensity=sentiment_result.get("emotional_intensity"),
-        emotion_model_name=sentiment_result.get("emotion_model_name"),
-        emotion_model_version=sentiment_result.get("emotion_model_version"),
-        emotion_score_semantics=sentiment_result.get("emotion_score_semantics"),
-        emotion_threshold=sentiment_result.get("emotion_threshold"),
-        emotion_chunks=sentiment_result.get("emotion_chunks"),
-        key_phrases=json.dumps(sentiment_result.get("key_phrases", [])),
         user_id=current_user.id
     )
+    generation = prepare_analysis(db_entry)
     db.add(db_entry)
     db.commit()
     db.refresh(db_entry)
+    enqueue_or_mark_failed(db_entry, generation, db)
     return serialize_entry(db_entry)
 
 # ========== READ ALL ==========
@@ -112,6 +140,7 @@ def get_weekly_summary(
     
     entries = db.query(models.JournalEntry).filter(
         models.JournalEntry.user_id == current_user.id,
+        models.JournalEntry.analysis_state == "completed",
         models.JournalEntry.created_at >= one_week_ago
     ).order_by(models.JournalEntry.created_at).all()
     
@@ -147,6 +176,7 @@ def get_emotion_trends(
     
     entries = db.query(models.JournalEntry).filter(
         models.JournalEntry.user_id == current_user.id,
+        models.JournalEntry.analysis_state == "completed",
         models.JournalEntry.created_at >= start_date
     ).order_by(models.JournalEntry.created_at).all()
     
@@ -195,6 +225,7 @@ def get_dashboard_analytics(
     start_date = datetime.now(timezone.utc) - timedelta(days=days)
     entries = db.query(models.JournalEntry).filter(
         models.JournalEntry.user_id == current_user.id,
+        models.JournalEntry.analysis_state == "completed",
         models.JournalEntry.created_at >= start_date,
     ).order_by(models.JournalEntry.created_at).all()
 
@@ -231,6 +262,41 @@ def get_dashboard_analytics(
         "sentiment_by_weekday": [{"weekday": weekdays[i], "average": round(sum(values) / len(values), 3) if values else None} for i, values in weekday_values.items()],
     }
 
+
+@router.get("/long-term-analytics", response_model=schemas.LongTermAnalytics)
+def get_long_term_analytics(
+    period: str = "30",
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    if period not in VALID_PERIODS:
+        raise HTTPException(status_code=422, detail="period must be one of: 7, 30, 90, all")
+    entries = db.query(models.JournalEntry).filter(
+        models.JournalEntry.user_id == current_user.id,
+        models.JournalEntry.analysis_state == "completed",
+    ).order_by(models.JournalEntry.created_at).all()
+    return build_long_term_analytics(entries, period)
+
+
+@router.get("/{entry_id}/analysis-status", response_model=schemas.AnalysisStatus)
+def get_analysis_status(entry_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    entry = db.query(models.JournalEntry).filter(
+        models.JournalEntry.id == entry_id,
+        models.JournalEntry.user_id == current_user.id,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    return {
+        "entry_id": entry.id,
+        "state": entry.analysis_state,
+        "job_id": entry.analysis_job_id,
+        "attempts": entry.analysis_attempts or 0,
+        "queued_at": entry.analysis_queued_at,
+        "started_at": entry.analysis_started_at,
+        "completed_at": entry.analysis_completed_at,
+        "error": entry.analysis_error,
+    }
+
 # Dynamic routes must remain after named routes so names are not parsed as IDs.
 @router.get("/{entry_id}", response_model=schemas.JournalEntryEnhanced)
 def get_entry(entry_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
@@ -248,28 +314,10 @@ def update_entry(entry_id: int, entry_update: schemas.JournalEntryUpdate, _csrf:
     for field in ("title", "content"):
         if field in updates:
             setattr(entry, field, updates[field])
-    if "content" in updates:
-        result = analyze_entry(entry.content)
-        entry.sentiment_score = result["sentiment_score"]
-        entry.sentiment_label = result["sentiment_label"]
-        entry.sentiment_strength = result.get("sentiment_strength")
-        entry.analysis_confidence = result.get("analysis_confidence")
-        entry.analysis_method = result.get("analysis_method")
-        entry.analysis_version = result.get("analysis_version")
-        entry.analyzed_at = result.get("analyzed_at")
-        entry.subjectivity = result.get("subjectivity")
-        entry.word_count = result.get("word_count")
-        entry.emotion_data = json.dumps(result.get("emotions", {}))
-        entry.dominant_emotion = result.get("dominant_emotion")
-        entry.emotional_intensity = result.get("emotional_intensity")
-        entry.emotion_model_name = result.get("emotion_model_name")
-        entry.emotion_model_version = result.get("emotion_model_version")
-        entry.emotion_score_semantics = result.get("emotion_score_semantics")
-        entry.emotion_threshold = result.get("emotion_threshold")
-        entry.emotion_chunks = result.get("emotion_chunks")
-        entry.key_phrases = json.dumps(result.get("key_phrases", []))
+    generation = prepare_analysis(entry)
     db.commit()
     db.refresh(entry)
+    enqueue_or_mark_failed(entry, generation, db)
     return serialize_entry(entry)
 
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)

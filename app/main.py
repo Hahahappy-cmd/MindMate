@@ -93,7 +93,9 @@ async def api_root():
                 "update": "PUT /api/entries/{id}",
                 "delete": "DELETE /api/entries/{id}",
                 "weekly_summary": "GET /api/entries/weekly-summary",
-                "emotion_trends": "GET /api/entries/emotion-trends"
+                "emotion_trends": "GET /api/entries/emotion-trends",
+                "long_term_analytics": "GET /api/entries/long-term-analytics?period=30",
+                "analysis_status": "GET /api/entries/{id}/analysis-status"
             }
         }
     }

@@ -55,7 +55,7 @@ def test_journal_mutations_use_explicit_csrf_helper(client):
     assert "csrfFetch(`/api/entries/${entryId}`" in detail
 
 
-def test_complete_browser_session_flow(client):
+def test_complete_browser_session_flow(client, run_pending_analysis):
     login_cookie(client)
     csrf = client.cookies.get("csrf_token")
     headers = {"X-CSRF-Token": csrf}
@@ -65,9 +65,11 @@ def test_complete_browser_session_flow(client):
     })
     assert created.status_code == 201
     entry_id = created.json()["id"]
+    run_pending_analysis(entry_id)
     assert client.get(f"/journal/{entry_id}").status_code == 200
     edited = client.put(f"/api/entries/{entry_id}", headers=headers, json={"title": "Edited browser entry"})
     assert edited.status_code == 200
+    run_pending_analysis(entry_id)
     assert client.get("/api/entries/dashboard").json()["total_entries"] == 1
     assert client.get("/api/entries/weekly-summary").json()["statistics"]["total_entries"] == 1
     assert client.delete(f"/api/entries/{entry_id}", headers=headers).status_code == 204

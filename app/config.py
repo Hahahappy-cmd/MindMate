@@ -17,6 +17,15 @@ class Settings(BaseSettings):
     emotion_top_n: int = 5
     emotion_max_tokens: int = 512
     emotion_chunk_overlap: int = 64
+    theme_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+    theme_model_revision: str = "c9745ed1d9f207416be6d2e6f8de32d1f16199bf"
+    theme_similarity_threshold: float = 0.62
+    theme_max_tokens: int = 256
+    theme_chunk_overlap: int = 32
+    redis_url: str = "redis://localhost:6379/0"
+    ai_queue_name: str = "mindmate-ai"
+    ai_job_timeout_seconds: int = 600
+    ai_job_max_retries: int = 3
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parent.parent / ".env",

@@ -41,7 +41,20 @@ def migrate_existing_sqlite_schema():
         "emotion_score_semantics": "VARCHAR(64)",
         "emotion_threshold": "FLOAT",
         "emotion_chunks": "INTEGER",
+        "theme_embedding": "TEXT",
+        "theme_embedding_model": "VARCHAR(128)",
+        "theme_embedding_version": "VARCHAR(64)",
+        "theme_embedding_hash": "VARCHAR(64)",
+        "theme_embedded_at": "DATETIME",
         "updated_at": "DATETIME",
+        "analysis_state": "VARCHAR(16) NOT NULL DEFAULT 'completed'",
+        "analysis_generation": "VARCHAR(36)",
+        "analysis_job_id": "VARCHAR(128)",
+        "analysis_error": "TEXT",
+        "analysis_attempts": "INTEGER NOT NULL DEFAULT 0",
+        "analysis_queued_at": "DATETIME",
+        "analysis_started_at": "DATETIME",
+        "analysis_completed_at": "DATETIME",
     }
     with engine.begin() as connection:
         for name, sql_type in additions.items():
@@ -54,6 +67,9 @@ def migrate_existing_sqlite_schema():
                 "CREATE INDEX IF NOT EXISTS ix_journal_entries_user_created "
                 "ON journal_entries (user_id, created_at)"
             )
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_journal_entries_analysis_state ON journal_entries (analysis_state)")
         )
 
 def get_db():

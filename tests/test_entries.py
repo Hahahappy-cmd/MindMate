@@ -2,10 +2,14 @@ def create_entry(client, headers, title="A day", content="I feel happy and hopef
     return client.post("/api/entries/", headers=headers, json={"title": title, "content": content})
 
 
-def test_entry_crud(client, auth_headers):
+def test_entry_crud(client, auth_headers, run_pending_analysis):
     created = create_entry(client, auth_headers)
     assert created.status_code == 201
     entry = created.json()
+    assert entry["analysis_state"] == "pending"
+    assert entry["sentiment_label"] is None
+    run_pending_analysis(entry["id"])
+    entry = client.get(f"/api/entries/{entry['id']}", headers=auth_headers).json()
     assert entry["sentiment_label"] in {"positive", "very positive"}
     assert entry["detected_emotions"]["joy"] > 0
     assert entry["dominant_emotion"] == "joy"
@@ -17,6 +21,7 @@ def test_entry_crud(client, auth_headers):
     updated = client.put(f"/api/entries/{entry_id}", headers=auth_headers, json={"title": "Updated"})
     assert updated.status_code == 200
     assert updated.json()["title"] == "Updated"
+    assert updated.json()["analysis_state"] == "pending"
     assert client.delete(f"/api/entries/{entry_id}", headers=auth_headers).status_code == 204
     assert client.get(f"/api/entries/{entry_id}", headers=auth_headers).status_code == 404
 
@@ -42,8 +47,9 @@ def test_named_routes_are_not_shadowed(client, auth_headers):
     assert client.get("/api/entries/dashboard", headers=auth_headers).status_code == 200
 
 
-def test_current_user_response_includes_enhanced_entries(client, auth_headers):
-    create_entry(client, auth_headers)
+def test_current_user_response_includes_enhanced_entries(client, auth_headers, run_pending_analysis):
+    entry_id = create_entry(client, auth_headers).json()["id"]
+    run_pending_analysis(entry_id)
     response = client.get("/api/users/me", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["entries"][0]["detected_emotions"]["joy"] > 0

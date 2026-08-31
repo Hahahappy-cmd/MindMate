@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, constr
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 
 # Password constraints: at least 8 characters
 PasswordStr = constr(min_length=8, max_length=128)
@@ -58,6 +58,13 @@ class JournalEntryCreate(JournalEntryBase):
 class JournalEntryResponse(JournalEntryBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    analysis_state: Literal["pending", "processing", "completed", "failed"]
+    analysis_job_id: Optional[str] = None
+    analysis_error: Optional[str] = None
+    analysis_attempts: int = 0
+    analysis_queued_at: Optional[datetime] = None
+    analysis_started_at: Optional[datetime] = None
+    analysis_completed_at: Optional[datetime] = None
     sentiment_score: Optional[float] = None
     sentiment_label: Optional[str] = None
     sentiment_strength: Optional[float] = None
@@ -98,6 +105,17 @@ class JournalEntryUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     content: Optional[str] = Field(default=None, min_length=1, max_length=20000)
 
+
+class AnalysisStatus(BaseModel):
+    entry_id: int
+    state: Literal["pending", "processing", "completed", "failed"]
+    job_id: Optional[str] = None
+    attempts: int
+    queued_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    error: Optional[str] = None
+
 # === User with Entries ===
 class UserWithEntries(UserResponse):
     entries: List[JournalEntryResponse] = []
@@ -123,3 +141,22 @@ class DashboardAnalytics(BaseModel):
     dominant_emotion_over_time: List[Dict[str, Any]]
     emotion_distribution: Dict[str, float]
     sentiment_by_weekday: List[Dict[str, Any]]
+
+
+class LongTermAnalytics(BaseModel):
+    period: Literal["7", "30", "90", "all"]
+    period_days: Optional[int]
+    status: Literal["ready", "insufficient_data"]
+    minimum_entries: int
+    total_entries: int
+    average_sentiment: Optional[float]
+    sentiment_trend: str
+    rolling_sentiment: List[Dict[str, Any]]
+    comparison: Dict[str, Any]
+    dominant_emotions: List[Dict[str, Any]]
+    emotion_distribution: Dict[str, float]
+    emotion_over_time: List[Dict[str, Any]]
+    sentiment_by_weekday: List[Dict[str, Any]]
+    entry_frequency: List[Dict[str, Any]]
+    themes: List[Dict[str, Any]]
+    insights: List[str]
