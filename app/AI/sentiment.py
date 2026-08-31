@@ -1,7 +1,6 @@
 from textblob import TextBlob
 import numpy as np
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List
 import re
 
 def analyze_sentiment_advanced(text: str) -> dict:
@@ -30,6 +29,10 @@ def analyze_sentiment_advanced(text: str) -> dict:
     
     # Calculate subjectivity
     subjectivity = analysis.sentiment.subjectivity
+
+    # TextBlob does not expose a calibrated probability. Absolute polarity is
+    # therefore labelled as strength, not confidence.
+    sentiment_strength = min(1.0, abs(sentiment_score))
     
     # Detect key phrases
     key_phrases = extract_key_phrases(text)
@@ -38,6 +41,8 @@ def analyze_sentiment_advanced(text: str) -> dict:
         "sentiment_score": round(sentiment_score, 3),
         "sentiment_label": label,
         "subjectivity": round(subjectivity, 3),
+        "sentiment_strength": round(sentiment_strength, 3),
+        "analysis_confidence": None,
         "emotions": emotions,
         "key_phrases": key_phrases[:3],  # Top 3 phrases
         "word_count": len(text.split())
@@ -72,9 +77,17 @@ def detect_emotions(text: str) -> Dict[str, float]:
         "disgust": ["disgust", "dislike", "hate", "repulsed", "gross", "nasty", "awful"]
     }
     
-    # Count emotion keywords
+    negations = {"no", "not", "never", "without", "hardly"}
+
+    # Match whole words/phrases and ignore a nearby explicit negation.
     for emotion, keywords in emotion_keywords.items():
-        count = sum(1 for keyword in keywords if keyword in text_lower)
+        count = 0
+        for keyword in keywords:
+            pattern = rf"\b{re.escape(keyword)}\b"
+            for match in re.finditer(pattern, text_lower):
+                prefix_words = re.findall(r"\b[\w']+\b", text_lower[max(0, match.start() - 35):match.start()])[-3:]
+                if not negations.intersection(prefix_words):
+                    count += 1
         emotions[emotion] = min(count / 5, 1.0)  # Normalize to 0-1
     
     return emotions

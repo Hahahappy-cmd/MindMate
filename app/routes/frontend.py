@@ -3,10 +3,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 import os
+import secrets
 from ..database import get_db
 from ..dependencies import get_current_user_optional
 from .. import models
-from ..auth import get_password_hash, verify_password, create_access_token
+from ..auth import create_access_token
+from ..config import settings
+from ..services.users import authenticate_user, create_user, find_existing_user
 
 router = APIRouter(tags=["frontend"])
 
@@ -16,20 +19,12 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "frontend", "templa
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request, current_user: models.User = Depends(get_current_user_optional)):
-    print(f"🔍 Home page accessed - User: {current_user}")
-    print(f"🔍 Request headers: {dict(request.headers)}")
-    
     if current_user:
-        print("✅ User authenticated, redirecting to dashboard")
         return RedirectResponse(url="/dashboard")
-    
-    print("ℹ️ No authenticated user, showing home page")
-    return templates.TemplateResponse("index.html", {"request": request, "current_user": current_user})
+    return templates.TemplateResponse(request, "index.html", {"current_user": current_user})
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, current_user: models.User = Depends(get_current_user_optional)):
-    print(f"🔍 Login page accessed - User: {current_user}")
-    
     # Check for success message from registration
     registered = request.query_params.get("registered")
     success_message = None
@@ -37,14 +32,11 @@ async def login_page(request: Request, current_user: models.User = Depends(get_c
         success_message = "Registration successful! Please login."
     
     if current_user:
-        print("✅ User already authenticated, redirecting to dashboard")
         return RedirectResponse(url="/dashboard")
-    
-    print("ℹ️ Showing login page")
     return templates.TemplateResponse(
+        request,
         "login.html", 
         {
-            "request": request, 
             "current_user": current_user,
             "success": success_message
         }
@@ -52,53 +44,48 @@ async def login_page(request: Request, current_user: models.User = Depends(get_c
 
 @router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request, current_user: models.User = Depends(get_current_user_optional)):
-    print(f"🔍 Register page accessed - User: {current_user}")
-    
     if current_user:
-        print("✅ User already authenticated, redirecting to dashboard")
         return RedirectResponse(url="/dashboard")
-    
-    print("ℹ️ Showing register page")
-    return templates.TemplateResponse("register.html", {"request": request, "current_user": current_user})
+    return templates.TemplateResponse(request, "register.html", {"current_user": current_user})
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, current_user: models.User = Depends(get_current_user_optional)):
-    print(f"🔍 Dashboard page accessed - User: {current_user}")
-    
     if not current_user:
-        print("❌ No authenticated user, redirecting to login")
         return RedirectResponse(url="/login")
-    
-    print("✅ Showing dashboard")
-    return templates.TemplateResponse("dashboard.html", {"request": request, "current_user": current_user})
+    return templates.TemplateResponse(request, "dashboard.html", {"current_user": current_user})
 
 @router.get("/journal", response_class=HTMLResponse)
 async def journal_page(request: Request, current_user: models.User = Depends(get_current_user_optional)):
-    print(f"🔍 Journal page accessed - User: {current_user}")
-    
     if not current_user:
-        print("❌ No authenticated user, redirecting to login")
         return RedirectResponse(url="/login")
-    
-    print("✅ Showing journal page")
-    return templates.TemplateResponse("journal.html", {"request": request, "current_user": current_user})
+    return templates.TemplateResponse(request, "journal.html", {"current_user": current_user})
+
+@router.get("/journal/{entry_id}", response_class=HTMLResponse)
+async def journal_detail(
+    entry_id: int,
+    request: Request,
+    current_user: models.User = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+):
+    if not current_user:
+        return RedirectResponse(url="/login")
+    entry = db.query(models.JournalEntry).filter(
+        models.JournalEntry.id == entry_id,
+        models.JournalEntry.user_id == current_user.id,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+    return templates.TemplateResponse(
+        request,
+        "entry_detail.html",
+        {"current_user": current_user, "entry": entry},
+    )
 
 @router.get("/weekly-summary", response_class=HTMLResponse)
 async def weekly_summary_page(request: Request, current_user: models.User = Depends(get_current_user_optional)):
-    print(f"🔍 Weekly summary page accessed - User: {current_user}")
-    
     if not current_user:
-        print("❌ No authenticated user, redirecting to login")
         return RedirectResponse(url="/login")
-    
-    print("✅ Showing weekly summary page")
-    return templates.TemplateResponse("summary.html", {"request": request, "current_user": current_user})
-
-# Test route without authentication
-@router.get("/test-no-auth", response_class=HTMLResponse)
-async def test_no_auth(request: Request):
-    print("🔵 TEST ROUTE HIT - No auth!")
-    return HTMLResponse(content="<h1>Test Success!</h1><p>If you see this, routing works.</p>")
+    return templates.TemplateResponse(request, "summary.html", {"current_user": current_user})
 
 @router.post("/register")
 async def register_post(
@@ -112,68 +99,61 @@ async def register_post(
     """
     Handle registration form submission
     """
-    print(f"📝 Registration attempt for: {username}")
-    
     # Validate passwords match
     if password != confirm_password:
         return templates.TemplateResponse(
+            request,
             "register.html", 
             {
-                "request": request, 
                 "error": "Passwords do not match",
                 "current_user": None
             }
         )
+
+    if len(username) < 3 or len(username) > 50 or not all(char.isalnum() or char in "_-" for char in username):
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {"error": "Username must be 3–50 characters using letters, numbers, _ or -", "current_user": None},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
     
     # Validate password length
-    if len(password) < 8:
+    if len(password) < 8 or len(password) > 128:
         return templates.TemplateResponse(
+            request,
             "register.html", 
             {
-                "request": request, 
                 "error": "Password must be at least 8 characters long",
                 "current_user": None
             }
         )
     
     # Check if user exists
-    existing_user = db.query(models.User).filter(
-        (models.User.username == username) | (models.User.email == email)
-    ).first()
+    existing_user = find_existing_user(db, username, email)
     
     if existing_user:
         if existing_user.username == username:
             return templates.TemplateResponse(
+                request,
                 "register.html", 
                 {
-                    "request": request, 
                     "error": "Username already taken",
                     "current_user": None
                 }
             )
         else:
             return templates.TemplateResponse(
+                request,
                 "register.html", 
                 {
-                    "request": request, 
                     "error": "Email already registered",
                     "current_user": None
                 }
             )
     
     # Create new user
-    hashed_password = get_password_hash(password)
-    new_user = models.User(
-        username=username,
-        email=email,
-        hashed_password=hashed_password
-    )
-    
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    print(f"✅ User created: {username}")
+    create_user(db, username, email, password)
     
     # Redirect to login with success message
     response = RedirectResponse(url="/login?registered=true", status_code=303)
@@ -189,18 +169,13 @@ async def login_post(
     """
     Handle login form submission
     """
-    print(f"🔑 Login attempt for: {username}")
-    
     # Find user by username or email
-    user = db.query(models.User).filter(
-        (models.User.username == username) | (models.User.email == username)
-    ).first()
-    
-    if not user or not verify_password(password, user.hashed_password):
+    user = authenticate_user(db, username, password)
+    if not user:
         return templates.TemplateResponse(
+            request,
             "login.html", 
             {
-                "request": request, 
                 "error": "Invalid username or password",
                 "current_user": None
             }
@@ -209,52 +184,51 @@ async def login_post(
     # Create access token
     access_token = create_access_token(data={"sub": user.username})
     
-    print(f"✅ Login successful for: {username}")
-    
     # Redirect to dashboard with token in cookie
     response = RedirectResponse(url="/dashboard", status_code=303)
     response.set_cookie(
         key="access_token",
         value=f"Bearer {access_token}",
         httponly=True,  # Prevents JavaScript access
-        max_age=1800,  # 30 minutes
-        expires=1800,
+        max_age=settings.access_token_expire_minutes * 60,
+        expires=settings.access_token_expire_minutes * 60,
         path="/",
-        secure=False,
+        secure=settings.cookie_secure,
         samesite="lax"
+    )
+    response.set_cookie(
+        key="csrf_token",
+        value=secrets.token_urlsafe(32),
+        httponly=False,
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+        secure=settings.cookie_secure,
+        samesite="lax",
     )
     
     return response
 
-@router.get("/logout")
-async def logout():
+@router.post("/logout")
+async def logout(request: Request, csrf_token: str = Form(...)):
     """
     Handle logout
     """
+    cookie_token = request.cookies.get("csrf_token")
+    if not cookie_token or not secrets.compare_digest(cookie_token, csrf_token):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid CSRF token")
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie("access_token")
+    response.delete_cookie("csrf_token")
     return response
 
-# Optional: Add a profile page
 @router.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request, current_user: models.User = Depends(get_current_user_optional)):
-    print(f"🔍 Profile page accessed - User: {current_user}")
-    
     if not current_user:
-        print("❌ No authenticated user, redirecting to login")
         return RedirectResponse(url="/login")
-    
-    print("✅ Showing profile page")
-    return templates.TemplateResponse("profile.html", {"request": request, "current_user": current_user})
+    return templates.TemplateResponse(request, "profile.html", {"current_user": current_user})
 
-# Optional: Add settings page
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, current_user: models.User = Depends(get_current_user_optional)):
-    print(f"🔍 Settings page accessed - User: {current_user}")
-    
     if not current_user:
-        print("❌ No authenticated user, redirecting to login")
         return RedirectResponse(url="/login")
-    
-    print("✅ Showing settings page")
-    return templates.TemplateResponse("settings.html", {"request": request, "current_user": current_user})
+    return templates.TemplateResponse(request, "settings.html", {"current_user": current_user})

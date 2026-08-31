@@ -2,7 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone
-from .database import engine
+import secrets
+from .config import settings
+from .database import engine, migrate_existing_sqlite_schema
 from . import models
 
 # Import routers
@@ -12,12 +14,13 @@ app = FastAPI(
     title="MindMate",
     description="AI-Powered Mental Wellness Journal with Advanced Emotion Analysis",
     version="5.0.0",
-    docs_url="/docs",  # Keep original docs URL for now
+    docs_url="/docs",
     redoc_url="/redoc"
 )
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
+migrate_existing_sqlite_schema()
 
 # Add CORS middleware
 app.add_middleware(
@@ -28,42 +31,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routers (Week 1-4 features)
+@app.middleware("http")
+async def ensure_csrf_cookie(request, call_next):
+    csrf_token = request.cookies.get("csrf_token")
+    should_set_csrf = bool(request.cookies.get("access_token") and not csrf_token)
+    if should_set_csrf:
+        csrf_token = secrets.token_urlsafe(32)
+    request.state.csrf_token = csrf_token or ""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if should_set_csrf:
+        response.set_cookie(
+            "csrf_token",
+            csrf_token,
+            httponly=False,
+            secure=settings.cookie_secure,
+            samesite="lax",
+            path="/",
+            max_age=settings.access_token_expire_minutes * 60,
+        )
+    return response
+
 app.include_router(users.router, prefix="/api")
 app.include_router(entries.router, prefix="/api")
 
-# Frontend routes (Week 5) - import only if exists
-try:
-    from .routes import frontend
-    app.include_router(frontend.router)
-    print("✅ Frontend routes loaded")
-except ImportError:
-    print("⚠️ Frontend routes not available yet")
+from .routes import frontend
+app.include_router(frontend.router)
 
-# Serve static files if frontend exists
-try:
-    import os
-    static_dir = os.path.join(os.path.dirname(__file__), "frontend", "static")
-    if os.path.exists(static_dir):
-        app.mount("/static", StaticFiles(directory=static_dir), name="static")
-        print("✅ Static files mounted")
-except:
-    print("⚠️ Static files not available yet")
-
-@app.get("/")
-async def root():
-    return {
-        "message": "Welcome to MindMate API",
-        "version": "5.0.0",
-        "status": "running",
-        "endpoints": {
-            "api_docs": "/docs",
-            "api_redoc": "/redoc",
-            "user_auth": "/api/users/*",
-            "journal_entries": "/api/entries/*",
-            "frontend": "Coming soon - check /dashboard after setup"
-        }
-    }
+import os
+static_dir = os.path.join(os.path.dirname(__file__), "frontend", "static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 @app.get("/health")
 async def health_check():

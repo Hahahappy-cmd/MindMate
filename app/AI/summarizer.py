@@ -9,8 +9,14 @@ def generate_weekly_summary(entries: List[Dict]) -> Dict[str, Any]:
     if not entries:
         return {
             "summary": "No entries this week.",
+            "statistics": {
+                "total_entries": 0,
+                "average_sentiment": 0.0,
+                "dominant_emotions": [],
+                "date_range": {"start": None, "end": None},
+            },
             "insights": [],
-            "recommendations": []
+            "recommendations": ["Write your first entry to begin tracking patterns."]
         }
     
     # Sort entries by date
@@ -29,7 +35,7 @@ def generate_weekly_summary(entries: List[Dict]) -> Dict[str, Any]:
                 emotions = json.loads(emotion_data)
                 for emotion, score in emotions.items():
                     all_emotions[emotion] = all_emotions.get(emotion, 0) + score
-            except:
+            except (TypeError, json.JSONDecodeError):
                 pass
     
     # Find dominant emotions
@@ -65,15 +71,15 @@ def generate_insights(entries: List[Dict], avg_sentiment: float, dominant_emotio
     
     # Sentiment insight
     if avg_sentiment > 0.3:
-        insights.append("Your overall mood has been very positive this week!")
+        insights.append("The language in your entries was strongly positive this week.")
     elif avg_sentiment > 0.1:
-        insights.append("You've maintained a positive outlook this week.")
+        insights.append("The language in your entries leaned positive this week.")
     elif avg_sentiment > -0.1:
-        insights.append("Your mood has been generally neutral this week.")
+        insights.append("The language in your entries was generally neutral this week.")
     elif avg_sentiment > -0.3:
-        insights.append("You've faced some challenges this week.")
+        insights.append("The language in your entries leaned negative this week.")
     else:
-        insights.append("It's been a tough week. Remember that difficult times pass.")
+        insights.append("The language in your entries was strongly negative this week.")
     
     # Entry frequency insight
     if len(entries) >= 7:
@@ -128,7 +134,7 @@ def create_summary_text(entry_count: int, avg_sentiment: float, dominant_emotion
     else:
         emotion_desc = "various emotions"
     
-    return f"This week, you wrote {entry_count} journal entries. Your overall mood was {sentiment_desc}, with themes of {emotion_desc} coming through in your writing."
+    return f"This week, you wrote {entry_count} journal entries. Their overall sentiment was {sentiment_desc}, with signals of {emotion_desc} appearing in the writing."
 
 def get_last_week_dates() -> tuple:
     """Get date range for the last week"""

@@ -1,24 +1,23 @@
-from pydantic import BaseModel, EmailStr, constr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, constr
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 # Password constraints: at least 8 characters
-PasswordStr = constr(min_length=8)
+PasswordStr = constr(min_length=8, max_length=128)
 
 # === User Schemas ===
 class UserBase(BaseModel):
     email: EmailStr
-    username: str
+    username: str = Field(min_length=3, max_length=50, pattern=r"^[A-Za-z0-9_-]+$")
 
 class UserCreate(UserBase):
     password: PasswordStr
 
 class UserResponse(UserBase):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     created_at: datetime
     
-    class Config:
-        from_attributes = True
 
 class UserLogin(BaseModel):
     username: str
@@ -44,25 +43,40 @@ class PasswordReset(BaseModel):
     token: str
     new_password: PasswordStr
 
+class AccountDelete(BaseModel):
+    password: str
+
 # === Journal Entry Schemas ===
 class JournalEntryBase(BaseModel):
-    title: str
-    content: str
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=20000)
 
 class JournalEntryCreate(JournalEntryBase):
     pass
 
 class JournalEntryResponse(JournalEntryBase):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     sentiment_score: Optional[float] = None
     sentiment_label: Optional[str] = None
+    sentiment_strength: Optional[float] = None
+    analysis_confidence: Optional[float] = None
+    analysis_method: Optional[str] = None
+    analysis_version: Optional[str] = None
+    analyzed_at: Optional[datetime] = None
+    subjectivity: Optional[float] = None
+    word_count: Optional[int] = None
+    detected_emotions: Dict[str, float] = Field(default_factory=dict)
+    dominant_emotion: Optional[str] = None
+    emotional_intensity: Optional[float] = None
+    emotion_score_semantics: str = "keyword_match_density"
+    key_phrases: List[str] = Field(default_factory=list)
     created_at: datetime
+    updated_at: Optional[datetime] = None
     user_id: int
     
-    class Config:
-        from_attributes = True
 
-# === Enhanced Journal Entry Schemas (Week 4) ===
 class EmotionData(BaseModel):
     joy: float = 0
     sadness: float = 0
@@ -74,23 +88,16 @@ class EmotionData(BaseModel):
     disgust: float = 0
 
 class JournalEntryEnhanced(JournalEntryResponse):
-    subjectivity: Optional[float] = None
-    word_count: Optional[int] = None
-    emotion_data: Optional[EmotionData] = None
-    key_phrases: Optional[List[str]] = None
-    
-    class Config:
-        from_attributes = True
+    pass
 
 class JournalEntryUpdate(BaseModel):
-    title: Optional[str] = None
-    content: Optional[str] = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    content: Optional[str] = Field(default=None, min_length=1, max_length=20000)
 
 # === User with Entries ===
 class UserWithEntries(UserResponse):
     entries: List[JournalEntryResponse] = []
 
-# === AI Feature Schemas (Week 4) ===
 class WeeklySummary(BaseModel):
     summary: str
     statistics: Dict[str, Any]
@@ -102,3 +109,13 @@ class EmotionTrends(BaseModel):
     total_entries: int
     trend_analysis: Dict[str, Any]
     entries: List[Dict[str, Any]]
+
+class DashboardAnalytics(BaseModel):
+    total_entries: int
+    entries_this_week: int
+    current_streak: int
+    average_sentiment: Optional[float]
+    sentiment_over_time: List[Dict[str, Any]]
+    dominant_emotion_over_time: List[Dict[str, Any]]
+    emotion_distribution: Dict[str, float]
+    sentiment_by_weekday: List[Dict[str, Any]]

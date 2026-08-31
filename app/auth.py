@@ -1,17 +1,19 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, status
-import secrets
 from typing import Optional, Dict, Any
-import os
+from .config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Secret key for JWT tokens - In production, use environment variables
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", secrets.token_urlsafe(32))
-REFRESH_SECRET_KEY = os.getenv("REFRESH_JWT_SECRET_KEY", secrets.token_urlsafe(32))
+SECRET_KEY = settings.jwt_secret_key
+REFRESH_SECRET_KEY = settings.refresh_jwt_secret_key
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
-REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
+REFRESH_TOKEN_EXPIRE_DAYS = settings.refresh_token_expire_days
 
 # Password hashing context - using both argon2 and bcrypt for compatibility
 pwd_context = CryptContext(
@@ -29,16 +31,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return pwd_context.verify(plain_password, hashed_password)
     except Exception as e:
-        print(f"Password verification error: {e}")
+        logger.debug("Password verification failed")
         return False
 
 def get_password_hash(password: str) -> str:
     """
     Hash a password with proper length handling
     """
-    # Argon2 has a password length limit, truncate if too long
-    if len(password) > 72:
-        password = password[:72]
     return pwd_context.hash(password)
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
@@ -49,22 +48,22 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     
     # Set expiration
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
     # Add claims
     to_encode.update({
         "exp": expire,
         "type": "access",
-        "iat": datetime.utcnow()  # Issued at
+        "iat": datetime.now(timezone.utc)
     })
     
     try:
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
         return encoded_jwt
     except Exception as e:
-        print(f"Error creating access token: {e}")
+        logger.exception("Could not create access token")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not create access token"
@@ -78,22 +77,22 @@ def create_refresh_token(data: Dict[str, Any], expires_delta: Optional[timedelta
     
     # Set expiration
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     
     # Add claims
     to_encode.update({
         "exp": expire,
         "type": "refresh",
-        "iat": datetime.utcnow()
+        "iat": datetime.now(timezone.utc)
     })
     
     try:
         encoded_jwt = jwt.encode(to_encode, REFRESH_SECRET_KEY, algorithm=ALGORITHM)
         return encoded_jwt
     except Exception as e:
-        print(f"Error creating refresh token: {e}")
+        logger.exception("Could not create refresh token")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not create refresh token"
@@ -120,19 +119,19 @@ def verify_token(token: str, is_refresh: bool = False) -> Optional[Dict[str, Any
         expected_type = "refresh" if is_refresh else "access"
         
         if token_type != expected_type:
-            print(f"Invalid token type: expected {expected_type}, got {token_type}")
+            logger.debug("Invalid token type")
             return None
         
         return payload
         
     except jwt.ExpiredSignatureError:
-        print("Token has expired")
+        logger.debug("Token has expired")
         return None
     except jwt.JWTError as e:
-        print(f"JWT verification error: {e}")
+        logger.debug("JWT verification failed")
         return None
     except Exception as e:
-        print(f"Unexpected token verification error: {e}")
+        logger.exception("Unexpected token verification error")
         return None
 
 def refresh_access_token(refresh_token: str) -> Optional[str]:
@@ -155,7 +154,7 @@ def refresh_access_token(refresh_token: str) -> Optional[str]:
         new_access_token = create_access_token(data={"sub": username})
         return new_access_token
     except Exception as e:
-        print(f"Error refreshing access token: {e}")
+        logger.exception("Could not refresh access token")
         return None
 
 def decode_token(token: str, is_refresh: bool = False) -> Optional[Dict[str, Any]]:
@@ -172,7 +171,7 @@ def decode_token(token: str, is_refresh: bool = False) -> Optional[Dict[str, Any
         )
         return payload
     except Exception as e:
-        print(f"Token decode error: {e}")
+        logger.debug("Token decode failed")
         return None
 
 def get_token_expiration(token: str, is_refresh: bool = False) -> Optional[datetime]:
@@ -181,7 +180,7 @@ def get_token_expiration(token: str, is_refresh: bool = False) -> Optional[datet
     """
     payload = decode_token(token, is_refresh)
     if payload and "exp" in payload:
-        return datetime.fromtimestamp(payload["exp"])
+        return datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
     return None
 
 def is_token_expired(token: str, is_refresh: bool = False) -> bool:
@@ -190,7 +189,7 @@ def is_token_expired(token: str, is_refresh: bool = False) -> bool:
     """
     exp = get_token_expiration(token, is_refresh)
     if exp:
-        return datetime.utcnow() > exp
+        return datetime.now(timezone.utc) > exp
     return True  # If we can't get expiration, assume it's expired
 
 def get_token_remaining_time(token: str, is_refresh: bool = False) -> Optional[timedelta]:
@@ -199,13 +198,6 @@ def get_token_remaining_time(token: str, is_refresh: bool = False) -> Optional[t
     """
     exp = get_token_expiration(token, is_refresh)
     if exp:
-        remaining = exp - datetime.utcnow()
+        remaining = exp - datetime.now(timezone.utc)
         return remaining if remaining.total_seconds() > 0 else timedelta(0)
     return None
-
-# For debugging - print configuration on import
-print(f"🔐 Auth module initialized with:")
-print(f"   - Algorithm: {ALGORITHM}")
-print(f"   - Access token expiry: {ACCESS_TOKEN_EXPIRE_MINUTES} minutes")
-print(f"   - Refresh token expiry: {REFRESH_TOKEN_EXPIRE_DAYS} days")
-print(f"   - Password hashing: Argon2 + BCrypt")

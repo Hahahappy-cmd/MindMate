@@ -1,77 +1,31 @@
 {% extends "base.html" %}
-
-{% block title %}Welcome to MindMate{% endblock %}
-
+{% block title %}MindMate — AI-powered reflection{% endblock %}
 {% block content %}
-<div class="row align-items-center min-vh-75">
-    <div class="col-md-6">
-        <h1 class="display-4 fw-bold mb-4">Your AI-Powered Mental Wellness Companion</h1>
-        <p class="lead mb-4">
-            Track your emotions, gain insights, and improve your mental wellbeing with 
-            AI-powered journaling. Understand your emotional patterns and receive 
-            personalized recommendations.
-        </p>
-        <div class="d-grid gap-2 d-md-flex justify-content-md-start">
-            <a href="/register" class="btn btn-primary btn-lg px-4 me-md-2">
-                <i class="fas fa-user-plus me-2"></i>Get Started
-            </a>
-            <a href="/login" class="btn btn-outline-primary btn-lg px-4">
-                <i class="fas fa-sign-in-alt me-2"></i>Login
-            </a>
-        </div>
+<section class="hero">
+  <div class="app-container hero-grid">
+    <div>
+      <div class="page-kicker">Private journal · local analysis</div>
+      <h1>Write naturally.<br><span style="color:#60a5fa">See the pattern.</span></h1>
+      <p class="hero-copy">MindMate turns your private writing into clear, measured emotional signals—without asking you to label how you feel.</p>
+      <div class="hero-actions"><a class="btn btn-primary" href="/register">Start reflecting</a><a class="btn btn-outline-light" href="/login">Sign in</a></div>
     </div>
-    <div class="col-md-6">
-        <div class="card card-shadow border-0">
-            <div class="card-body p-4">
-                <h3 class="card-title mb-4">✨ AI Features</h3>
-                <div class="row">
-                    <div class="col-6 mb-3">
-                        <div class="d-flex align-items-center">
-                            <div class="bg-primary bg-opacity-10 p-3 rounded-circle me-3">
-                                <i class="fas fa-brain fa-lg text-primary"></i>
-                            </div>
-                            <div>
-                                <h6 class="mb-0">Emotion Analysis</h6>
-                                <small class="text-muted">Detects 8 emotions</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-6 mb-3">
-                        <div class="d-flex align-items-center">
-                            <div class="bg-success bg-opacity-10 p-3 rounded-circle me-3">
-                                <i class="fas fa-chart-line fa-lg text-success"></i>
-                            </div>
-                            <div>
-                                <h6 class="mb-0">Trend Tracking</h6>
-                                <small class="text-muted">Visualize patterns</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-6 mb-3">
-                        <div class="d-flex align-items-center">
-                            <div class="bg-info bg-opacity-10 p-3 rounded-circle me-3">
-                                <i class="fas fa-lightbulb fa-lg text-info"></i>
-                            </div>
-                            <div>
-                                <h6 class="mb-0">Weekly Insights</h6>
-                                <small class="text-muted">Personalized summaries</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-6 mb-3">
-                        <div class="d-flex align-items-center">
-                            <div class="bg-warning bg-opacity-10 p-3 rounded-circle me-3">
-                                <i class="fas fa-shield-alt fa-lg text-warning"></i>
-                            </div>
-                            <div>
-                                <h6 class="mb-0">Secure & Private</h6>
-                                <small class="text-muted">Your data is safe</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="hero-console" aria-label="Example MindMate analytics preview">
+      <div class="console-top"><span>EXAMPLE · 7 DAY SIGNAL</span><span>LOCAL NLP / V1.0</span></div>
+      <div class="demo-chart"><div class="demo-bars" aria-hidden="true"><span style="height:34%"></span><span style="height:52%"></span><span style="height:45%"></span><span style="height:71%"></span><span style="height:62%"></span><span style="height:82%"></span><span style="height:74%"></span><span style="height:90%"></span></div></div>
+      <div class="demo-insights">
+        <div class="demo-insight"><span class="tech-label">Sentiment</span><strong>+0.31</strong></div>
+        <div class="demo-insight"><span class="tech-label">Signal</span><strong>JOY</strong></div>
+        <div class="demo-insight"><span class="tech-label">Entries</span><strong>06</strong></div>
+      </div>
     </div>
-</div>
+  </div>
+</section>
+<section class="app-container pb-5">
+  <div class="metric-strip">
+    <div class="metric"><span class="metric-index">01</span><div class="metric-label">Write</div><div class="metric-value">Unfiltered</div></div>
+    <div class="metric"><span class="metric-index">02</span><div class="metric-label">Analyze</div><div class="metric-value">Automatically</div></div>
+    <div class="metric"><span class="metric-index">03</span><div class="metric-label">Understand</div><div class="metric-value">Over time</div></div>
+    <div class="metric"><span class="metric-index">04</span><div class="metric-label">Ownership</div><div class="metric-value">Your data</div></div>
+  </div>
+</section>
 {% endblock %}
