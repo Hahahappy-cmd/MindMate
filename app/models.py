@@ -29,13 +29,18 @@ class JournalEntry(Base):
     sentiment_strength = Column(Float, nullable=True)
     analysis_confidence = Column(Float, nullable=True)
     analysis_method = Column(String(64), nullable=True)
-    analysis_version = Column(String(32), nullable=True)
+    analysis_version = Column(String(64), nullable=True)
     analyzed_at = Column(DateTime, nullable=True)
     subjectivity = Column(Float, nullable=True)  # New: How subjective/objective
     word_count = Column(Integer, nullable=True)  # New: Word count
     emotion_data = Column(Text, nullable=True)   # New: JSON string of emotions
     dominant_emotion = Column(String(32), nullable=True)
     emotional_intensity = Column(Float, nullable=True)
+    emotion_model_name = Column(String(128), nullable=True)
+    emotion_model_version = Column(String(64), nullable=True)
+    emotion_score_semantics = Column(String(64), nullable=True)
+    emotion_threshold = Column(Float, nullable=True)
+    emotion_chunks = Column(Integer, nullable=True)
     key_phrases = Column(Text, nullable=True)    # New: JSON string of key phrases
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(

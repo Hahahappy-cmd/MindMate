@@ -70,7 +70,11 @@ class JournalEntryResponse(JournalEntryBase):
     detected_emotions: Dict[str, float] = Field(default_factory=dict)
     dominant_emotion: Optional[str] = None
     emotional_intensity: Optional[float] = None
-    emotion_score_semantics: str = "keyword_match_density"
+    emotion_score_semantics: str = "unknown"
+    emotion_model_name: Optional[str] = None
+    emotion_model_version: Optional[str] = None
+    emotion_threshold: Optional[float] = None
+    emotion_chunks: Optional[int] = None
     key_phrases: List[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: Optional[datetime] = None

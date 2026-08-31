@@ -71,7 +71,44 @@ MindMate deliberately separates:
 
 - `title` and `content`: the user-authored journal data
 - `sentiment_label`, `sentiment_score`, and `sentiment_strength`: TextBlob-derived polarity
-- `detected_emotions`, `dominant_emotion`, and `emotional_intensity`: rule-based keyword signals
+- `detected_emotions`, `dominant_emotion`, and `emotional_intensity`: multi-label transformer results
+
+## Emotion analysis
+
+MindMate uses `SamLowe/roberta-base-go_emotions`, a RoBERTa-base model trained for
+multi-label classification over the 28 GoEmotions labels (including neutral). The
+model is loaded lazily once per application process. Logits are converted with a
+sigmoid; labels at or above `EMOTION_THRESHOLD` are returned, capped by
+`EMOTION_TOP_N`. If none cross the threshold, the highest-scoring label is returned
+so the API has an intentional dominant result.
+
+Sentiment remains a separate TextBlob polarity signal (positive/negative/neutral);
+emotion classification supplies categories such as joy, sadness, gratitude, and
+optimism. Neither output represents a diagnosis.
+
+Long entries are split into overlapping token windows instead of silently
+truncated. Per-window probabilities are combined using a token-count-weighted
+mean. Stored analysis includes model name, pinned revision, threshold, score
+semantics, chunk count, and timestamp. If the transformer runtime or model files
+are unavailable, journal creation falls back to the old keyword detector and
+explicitly records `keyword_fallback` / `keyword_match_density`.
+
+These probabilities are model outputs, not clinical confidence or a mental-health
+diagnosis. The model was trained on short, general English text; nuance, sarcasm,
+demographic bias, domain shift, and long-document aggregation remain limitations.
+
+Run the reproducible 20-example integration evaluation with:
+
+```bash
+python -m app.nlp.evaluation
+```
+
+It reports micro precision/recall/F1 and macro F1, plus a limited keyword baseline
+on the six labels shared by both systems. The fixture is a small hand-authored
+engineering check, not a publishable benchmark or evidence of clinical validity.
+
+Run the fast NLP and API tests with `python -m pytest`. Run the separately marked
+real-model smoke test with `RUN_SLOW_NLP_TESTS=1 python -m pytest tests/test_nlp.py`.
 - `analysis_confidence`: unset because the current implementation has no calibrated probability
 
 The current emotion classifier is intentionally lightweight and should not be interpreted as clinical analysis. Its service boundary is designed to allow a versioned model to replace it later.

@@ -1,0 +1,22 @@
+[
+  {"text": "I am delighted that everything worked out and I cannot stop smiling.", "labels": ["joy"]},
+  {"text": "I feel empty and heartbroken after saying goodbye.", "labels": ["sadness"]},
+  {"text": "I am furious that they ignored me again.", "labels": ["anger"]},
+  {"text": "I am terrified about what might happen tomorrow.", "labels": ["fear"]},
+  {"text": "I never expected the surprise party; I was completely amazed.", "labels": ["surprise"]},
+  {"text": "Thank you for staying with me when I needed help.", "labels": ["gratitude"]},
+  {"text": "I adore my partner and feel so close to them.", "labels": ["love"]},
+  {"text": "Things are difficult, but I believe next week will be better.", "labels": ["optimism"]},
+  {"text": "I regret what I said and wish I could take it back.", "labels": ["remorse"]},
+  {"text": "I finally finished the project and feel proud of myself.", "labels": ["pride"]},
+  {"text": "The test was cancelled, and the tension finally left my body.", "labels": ["relief"]},
+  {"text": "I do not understand why this keeps happening.", "labels": ["confusion"]},
+  {"text": "I wonder how the machine works and want to learn more.", "labels": ["curiosity"]},
+  {"text": "The constant tapping is getting on my nerves.", "labels": ["annoyance"]},
+  {"text": "That sounds like a sensible plan to me.", "labels": ["approval"]},
+  {"text": "I am worried and cannot settle down before the interview.", "labels": ["nervousness"]},
+  {"text": "The spoiled food smelled revolting and made me sick.", "labels": ["disgust"]},
+  {"text": "I am so happy you helped me; I truly appreciate you.", "labels": ["joy", "gratitude"]},
+  {"text": "I miss her terribly, but I am thankful for our time together.", "labels": ["sadness", "gratitude"]},
+  {"text": "I went to the store, bought bread, and returned home.", "labels": ["neutral"]}
+]

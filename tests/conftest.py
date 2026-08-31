@@ -8,6 +8,23 @@ from app.database import Base, get_db
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def stub_transformer(monkeypatch):
+    """Keep the normal suite fast and deterministic; real inference is a slow test."""
+    def analyze(_text):
+        return {
+            "dominant_emotion": "joy",
+            "emotions": {"joy": 0.82, "optimism": 0.61},
+            "model_name": "test/go-emotions",
+            "model_version": "test-revision",
+            "analysis_method": "transformer",
+            "score_semantics": "sigmoid_probability",
+            "threshold": 0.5,
+            "chunks_analyzed": 1,
+        }
+    monkeypatch.setattr("app.services.analysis.analyze_emotions", analyze)
+
+
 @pytest.fixture()
 def db_session():
     engine = create_engine(
@@ -48,4 +65,3 @@ def auth_headers(client, registered_user):
     response = client.post("/api/users/login", json={"username": registered_user["username"], "password": registered_user["password"]})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
-

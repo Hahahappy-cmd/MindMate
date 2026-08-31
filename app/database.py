@@ -36,6 +36,11 @@ def migrate_existing_sqlite_schema():
         "analyzed_at": "DATETIME",
         "dominant_emotion": "VARCHAR(32)",
         "emotional_intensity": "FLOAT",
+        "emotion_model_name": "VARCHAR(128)",
+        "emotion_model_version": "VARCHAR(64)",
+        "emotion_score_semantics": "VARCHAR(64)",
+        "emotion_threshold": "FLOAT",
+        "emotion_chunks": "INTEGER",
         "updated_at": "DATETIME",
     }
     with engine.begin() as connection:

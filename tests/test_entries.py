@@ -9,8 +9,9 @@ def test_entry_crud(client, auth_headers):
     assert entry["sentiment_label"] in {"positive", "very positive"}
     assert entry["detected_emotions"]["joy"] > 0
     assert entry["dominant_emotion"] == "joy"
-    assert entry["analysis_confidence"] is None
-    assert entry["emotion_score_semantics"] == "keyword_match_density"
+    assert entry["analysis_confidence"] == 0.82
+    assert entry["emotion_score_semantics"] == "sigmoid_probability"
+    assert entry["emotion_model_name"] == "test/go-emotions"
     entry_id = entry["id"]
     assert client.get(f"/api/entries/{entry_id}", headers=auth_headers).status_code == 200
     updated = client.put(f"/api/entries/{entry_id}", headers=auth_headers, json={"title": "Updated"})

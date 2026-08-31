@@ -36,7 +36,11 @@ def serialize_entry(entry: models.JournalEntry) -> dict:
         "detected_emotions": load_json(entry.emotion_data, {}),
         "dominant_emotion": entry.dominant_emotion,
         "emotional_intensity": entry.emotional_intensity,
-        "emotion_score_semantics": "keyword_match_density",
+        "emotion_score_semantics": entry.emotion_score_semantics or "keyword_match_density",
+        "emotion_model_name": entry.emotion_model_name,
+        "emotion_model_version": entry.emotion_model_version,
+        "emotion_threshold": entry.emotion_threshold,
+        "emotion_chunks": entry.emotion_chunks,
         "key_phrases": load_json(entry.key_phrases, []),
         "created_at": entry.created_at,
         "updated_at": entry.updated_at,
@@ -70,6 +74,11 @@ def create_entry(
         emotion_data=json.dumps(sentiment_result.get("emotions", {})),
         dominant_emotion=sentiment_result.get("dominant_emotion"),
         emotional_intensity=sentiment_result.get("emotional_intensity"),
+        emotion_model_name=sentiment_result.get("emotion_model_name"),
+        emotion_model_version=sentiment_result.get("emotion_model_version"),
+        emotion_score_semantics=sentiment_result.get("emotion_score_semantics"),
+        emotion_threshold=sentiment_result.get("emotion_threshold"),
+        emotion_chunks=sentiment_result.get("emotion_chunks"),
         key_phrases=json.dumps(sentiment_result.get("key_phrases", [])),
         user_id=current_user.id
     )
@@ -253,6 +262,11 @@ def update_entry(entry_id: int, entry_update: schemas.JournalEntryUpdate, _csrf:
         entry.emotion_data = json.dumps(result.get("emotions", {}))
         entry.dominant_emotion = result.get("dominant_emotion")
         entry.emotional_intensity = result.get("emotional_intensity")
+        entry.emotion_model_name = result.get("emotion_model_name")
+        entry.emotion_model_version = result.get("emotion_model_version")
+        entry.emotion_score_semantics = result.get("emotion_score_semantics")
+        entry.emotion_threshold = result.get("emotion_threshold")
+        entry.emotion_chunks = result.get("emotion_chunks")
         entry.key_phrases = json.dumps(result.get("key_phrases", []))
     db.commit()
     db.refresh(entry)

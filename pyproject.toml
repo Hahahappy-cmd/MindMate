@@ -19,13 +19,15 @@ dependencies = [
   "python-multipart==0.0.22",
   "sqlalchemy==2.0.46",
   "textblob==0.19.0",
+  "torch==2.13.0",
+  "transformers==4.57.6",
   "uvicorn[standard]==0.40.0",
 ]
 
 [project.optional-dependencies]
-dev = ["httpx==0.28.1", "pytest==9.0.2"]
+dev = ["httpx==0.28.1", "pytest==9.0.2", "scikit-learn==1.9.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-
+markers = ["slow: requires the downloaded transformer model"]
