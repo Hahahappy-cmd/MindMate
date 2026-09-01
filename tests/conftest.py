@@ -1,12 +1,34 @@
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+import os
+from pathlib import Path
 
-from app.database import Base, get_db
+import pytest
+from alembic import command
+from alembic.config import Config
+from fastapi.testclient import TestClient
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
+
+test_database_url = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
+if not test_database_url:
+    raise RuntimeError("Set TEST_DATABASE_URL to a dedicated PostgreSQL database ending in _test")
+parsed_test_url = make_url(test_database_url.replace("postgresql://", "postgresql+psycopg://", 1))
+if parsed_test_url.get_backend_name() != "postgresql" or not (parsed_test_url.database or "").endswith("_test"):
+    raise RuntimeError("Tests require a PostgreSQL database whose name ends in _test")
+os.environ["DATABASE_URL"] = test_database_url
+
+from app.database import get_db
 from app.main import app
 from app.models import JournalEntry
+
+
+@pytest.fixture(scope="session", autouse=True)
+def migrated_database():
+    root = Path(__file__).resolve().parents[1]
+    config = Config(root / "alembic.ini")
+    command.downgrade(config, "base")
+    command.upgrade(config, "head")
+    yield
+    command.downgrade(config, "base")
 
 
 @pytest.fixture(autouse=True)
@@ -43,18 +65,17 @@ def stub_transformer(monkeypatch):
 
 @pytest.fixture()
 def db_session():
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    session = sessionmaker(bind=engine, autocommit=False, autoflush=False)()
+    from app.database import engine
+
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = sessionmaker(bind=connection, autocommit=False, autoflush=False, expire_on_commit=False, join_transaction_mode="create_savepoint")()
     try:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(engine)
+        transaction.rollback()
+        connection.close()
 
 
 @pytest.fixture()

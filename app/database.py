@@ -1,76 +1,30 @@
-from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-import os
 
-# Use absolute path to be sure
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, 'mindmate.db')
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
+from .config import settings
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False}
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def normalize_database_url(database_url: str) -> str:
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return database_url
+
+
+def build_engine(database_url: str):
+    database_url = normalize_database_url(database_url)
+    if not database_url.startswith("postgresql+psycopg://"):
+        raise RuntimeError("MindMate requires a PostgreSQL DATABASE_URL")
+    return create_engine(
+        database_url,
+        pool_pre_ping=True,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
+    )
+
+
+engine = build_engine(settings.database_url)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 Base = declarative_base()
-
-@event.listens_for(engine, "connect")
-def enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
-
-def migrate_existing_sqlite_schema():
-    """Apply the small additive migration needed by pre-Alembic databases."""
-    if "journal_entries" not in inspect(engine).get_table_names():
-        return
-
-    existing = {
-        column["name"] for column in inspect(engine).get_columns("journal_entries")
-    }
-    additions = {
-        "sentiment_strength": "FLOAT",
-        "analysis_confidence": "FLOAT",
-        "analysis_method": "VARCHAR(64)",
-        "analysis_version": "VARCHAR(32)",
-        "analyzed_at": "DATETIME",
-        "dominant_emotion": "VARCHAR(32)",
-        "emotional_intensity": "FLOAT",
-        "emotion_model_name": "VARCHAR(128)",
-        "emotion_model_version": "VARCHAR(64)",
-        "emotion_score_semantics": "VARCHAR(64)",
-        "emotion_threshold": "FLOAT",
-        "emotion_chunks": "INTEGER",
-        "theme_embedding": "TEXT",
-        "theme_embedding_model": "VARCHAR(128)",
-        "theme_embedding_version": "VARCHAR(64)",
-        "theme_embedding_hash": "VARCHAR(64)",
-        "theme_embedded_at": "DATETIME",
-        "updated_at": "DATETIME",
-        "analysis_state": "VARCHAR(16) NOT NULL DEFAULT 'completed'",
-        "analysis_generation": "VARCHAR(36)",
-        "analysis_job_id": "VARCHAR(128)",
-        "analysis_error": "TEXT",
-        "analysis_attempts": "INTEGER NOT NULL DEFAULT 0",
-        "analysis_queued_at": "DATETIME",
-        "analysis_started_at": "DATETIME",
-        "analysis_completed_at": "DATETIME",
-    }
-    with engine.begin() as connection:
-        for name, sql_type in additions.items():
-            if name not in existing:
-                connection.execute(
-                    text(f"ALTER TABLE journal_entries ADD COLUMN {name} {sql_type}")
-                )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_journal_entries_user_created "
-                "ON journal_entries (user_id, created_at)"
-            )
-        )
-        connection.execute(
-            text("CREATE INDEX IF NOT EXISTS ix_journal_entries_analysis_state ON journal_entries (analysis_state)")
-        )
 
 def get_db():
     db = SessionLocal()

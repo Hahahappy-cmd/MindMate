@@ -53,7 +53,7 @@ def analyze_journal_entry(entry_id: int, generation: str) -> str:
         entry.analyzed_at = result.get("analyzed_at")
         entry.subjectivity = result.get("subjectivity")
         entry.word_count = result.get("word_count")
-        entry.emotion_data = json.dumps(result.get("emotions", {}))
+        entry.emotion_data = result.get("emotions", {})
         entry.dominant_emotion = result.get("dominant_emotion")
         entry.emotional_intensity = result.get("emotional_intensity")
         entry.emotion_model_name = result.get("emotion_model_name")
@@ -61,8 +61,8 @@ def analyze_journal_entry(entry_id: int, generation: str) -> str:
         entry.emotion_score_semantics = result.get("emotion_score_semantics")
         entry.emotion_threshold = result.get("emotion_threshold")
         entry.emotion_chunks = result.get("emotion_chunks")
-        entry.key_phrases = json.dumps(result.get("key_phrases", []))
-        entry.theme_embedding = json.dumps(embedding)
+        entry.key_phrases = result.get("key_phrases", [])
+        entry.theme_embedding = embedding
         entry.theme_embedding_hash = content_hash(source)
         entry.theme_embedding_model = embedder.model_name
         entry.theme_embedding_version = embedder.model_version

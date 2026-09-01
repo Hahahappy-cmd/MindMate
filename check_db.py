@@ -1,30 +1,21 @@
-# quick_check.py
-import sqlite3
-import json
+"""Print non-sensitive PostgreSQL schema diagnostics for local development."""
 
-conn = sqlite3.connect('mindmate.db')
-cursor = conn.cursor()
+from sqlalchemy import inspect, text
 
-cursor.execute("""
-    SELECT emotion_data, subjectivity, key_phrases 
-    FROM journal_entries 
-    WHERE id = 3
-""")
-data = cursor.fetchone()
+from app.database import engine
 
-if data:
-    print("🔍 Full AI Analysis of Entry #3:")
-    if data[0]:
-        emotions = json.loads(data[0])
-        print("😊 Emotions:")
-        for emotion, score in emotions.items():
-            if score > 0:
-                print(f"  {emotion}: {score:.2f}")
-    
-    print(f"📊 Subjectivity: {data[1]:.3f}")
-    
-    if data[2]:
-        phrases = json.loads(data[2])
-        print(f"🔑 Key phrases: {phrases}")
 
-conn.close()
+def main() -> None:
+    inspector = inspect(engine)
+    with engine.connect() as connection:
+        server_version = connection.execute(text("SHOW server_version")).scalar_one()
+        migration = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
+
+    print(f"Database dialect: {engine.dialect.name}")
+    print(f"PostgreSQL version: {server_version}")
+    print(f"Alembic revision: {migration or 'not applied'}")
+    print(f"Tables: {', '.join(sorted(inspector.get_table_names()))}")
+
+
+if __name__ == "__main__":
+    main()

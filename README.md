@@ -22,7 +22,8 @@ MindMate is a wellness reflection tool, not a medical device and not a substitut
 
 - Python 3.11+
 - FastAPI and Uvicorn
-- SQLAlchemy and SQLite
+- SQLAlchemy, PostgreSQL, and psycopg
+- Alembic schema migrations
 - Redis and RQ
 - Pydantic
 - Jinja2, Bootstrap, vanilla JavaScript, and Chart.js
@@ -31,12 +32,31 @@ MindMate is a wellness reflection tool, not a medical device and not a substitut
 
 ## Setup
 
+MindMate uses PostgreSQL for development, tests, and production. On macOS with
+Homebrew, install and start it, then create separate application and test
+databases owned by your local PostgreSQL role:
+
+```bash
+brew install postgresql@17
+brew services start postgresql@17
+export PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH"
+createdb mindmate
+createdb mindmate_test
+```
+
 ```bash
 cd MIndMate
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
 cp .env.example .env
+```
+
+Set `DATABASE_URL` in `.env` for your local role. A passwordless Homebrew local
+installation commonly uses:
+
+```env
+DATABASE_URL=postgresql+psycopg://YOUR_MACOS_USERNAME@localhost:5432/mindmate
 ```
 
 Replace both JWT secrets in `.env` with independently generated values. For example:
@@ -65,15 +85,48 @@ Open:
 - API documentation: <http://127.0.0.1:8000/docs>
 - Health check: <http://127.0.0.1:8000/health>
 
-The development database is created as `mindmate.db`. Existing pre-migration databases receive the additive journal fields automatically.
+Run `alembic upgrade head` before starting the API or worker after installing or
+updating the project. Startup fails if `DATABASE_URL` is missing or does not use
+PostgreSQL.
+
+Schema creation and evolution are managed only by Alembic. The application does
+not call `create_all()` or alter tables during startup.
+
+## Database and migrations
+
+PostgreSQL is the only supported database. Configure a psycopg SQLAlchemy URL and
+apply migrations:
+
+```env
+DATABASE_URL=postgresql+psycopg://mindmate:strong-password@localhost:5432/mindmate
+```
+
+```bash
+alembic upgrade head
+alembic current
+```
+
+Create a future migration after editing models:
+
+```bash
+alembic revision --autogenerate -m "describe schema change"
+alembic upgrade head
+```
+
+Always inspect generated migrations before applying them. Do not run `alembic
+downgrade base` against a database containing data because it removes application
+tables.
 
 ## Tests
 
 ```bash
-python -m pytest
+TEST_DATABASE_URL=postgresql+psycopg://YOUR_MACOS_USERNAME@localhost:5432/mindmate_test python -m pytest
 ```
 
-Tests use an isolated in-memory SQLite database and do not modify development journal data.
+The test database name must end in `_test`. The session migrates that dedicated
+database from base to head, runs each test inside a rollback transaction, and
+downgrades it after the suite. This guard prevents accidental use of the
+development or production database.
 
 ## Background AI jobs
 
@@ -97,6 +150,35 @@ does this automatically every two seconds while work is active.
 The worker uses RQ's in-process `SimpleWorker` so the existing lazy singleton model
 instances remain loaded between jobs. Run Redis as a trusted, private service: RQ
 job data and application metadata should never be exposed to untrusted clients.
+
+## Security and privacy configuration
+
+Production startup rejects development secrets, insecure cookies, identical access
+and refresh secrets, and non-PostgreSQL database URLs. Configure at least:
+
+```env
+ENVIRONMENT=production
+DATABASE_URL=postgresql+psycopg://...
+JWT_SECRET_KEY=<independent random value of at least 32 characters>
+REFRESH_JWT_SECRET_KEY=<different random value of at least 32 characters>
+REDIS_URL=redis://...
+COOKIE_SECURE=true
+COOKIE_SAMESITE=lax
+TRUSTED_HOSTS=journal.example.com
+ALLOWED_ORIGINS=https://journal.example.com
+```
+
+Access JWTs include issuer, audience, JTI, expiration, token type, and per-user
+session version claims. Refresh JTIs are SHA-256 hashed in the database, rotated on
+every refresh, and rejected after replay. Logout and password reset revoke refresh
+sessions and invalidate existing access tokens.
+
+Cookie-authenticated mutations require a matching CSRF header/token. Browser
+cookies are HttpOnly where appropriate, and production requires Secure cookies.
+Responses include CSP, frame, content-type, referrer, permissions, and private
+cache-control headers. Request bodies are bounded by `MAX_REQUEST_BYTES`.
+Journal content and tokens are not added to operational logs, and all NLP remains
+local—no third-party AI service receives journal text.
 
 ## Data concepts
 

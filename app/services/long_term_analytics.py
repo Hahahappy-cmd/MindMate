@@ -20,6 +20,8 @@ def _naive_utc(value: datetime) -> datetime:
 
 
 def _emotions(entry: Any) -> dict[str, float]:
+    if isinstance(entry.emotion_data, dict):
+        return entry.emotion_data
     try:
         return json.loads(entry.emotion_data or "{}")
     except (TypeError, json.JSONDecodeError):
@@ -87,7 +89,7 @@ def group_themes(entries: list[Any]) -> list[dict[str, Any]]:
     embedded = []
     for entry in entries:
         try:
-            vector = json.loads(entry.theme_embedding) if entry.theme_embedding else None
+            vector = entry.theme_embedding if isinstance(entry.theme_embedding, list) else json.loads(entry.theme_embedding) if entry.theme_embedding else None
         except (TypeError, json.JSONDecodeError):
             vector = None
         if vector:

@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 import os
 import secrets
+from datetime import datetime, timezone
 from ..database import get_db
 from ..dependencies import get_current_user_optional
 from .. import models
@@ -182,7 +183,7 @@ async def login_post(
         )
     
     # Create access token
-    access_token = create_access_token(data={"sub": user.username})
+    access_token = create_access_token(data={"sub": user.username, "ver": user.token_version})
     
     # Redirect to dashboard with token in cookie
     response = RedirectResponse(url="/dashboard", status_code=303)
@@ -194,7 +195,8 @@ async def login_post(
         expires=settings.access_token_expire_minutes * 60,
         path="/",
         secure=settings.cookie_secure,
-        samesite="lax"
+        samesite=settings.cookie_samesite,
+        domain=settings.cookie_domain or None,
     )
     response.set_cookie(
         key="csrf_token",
@@ -203,19 +205,24 @@ async def login_post(
         max_age=settings.access_token_expire_minutes * 60,
         path="/",
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
+        domain=settings.cookie_domain or None,
     )
     
     return response
 
 @router.post("/logout")
-async def logout(request: Request, csrf_token: str = Form(...)):
+async def logout(request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user_optional)):
     """
     Handle logout
     """
     cookie_token = request.cookies.get("csrf_token")
     if not cookie_token or not secrets.compare_digest(cookie_token, csrf_token):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid CSRF token")
+    if current_user:
+        current_user.token_version += 1
+        db.query(models.RefreshSession).filter(models.RefreshSession.user_id == current_user.id, models.RefreshSession.revoked_at.is_(None)).update({"revoked_at": datetime.now(timezone.utc)})
+        db.commit()
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie("access_token")
     response.delete_cookie("csrf_token")

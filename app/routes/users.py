@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 from ..database import get_db
 from .. import models, schemas
 from .. import auth
@@ -10,6 +10,16 @@ from .entries import serialize_entry
 from ..services.users import authenticate_user, create_user, find_existing_user
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+def _store_refresh_session(db: Session, user: models.User, token: str) -> models.RefreshSession:
+    payload = auth.verify_token(token, is_refresh=True)
+    session = models.RefreshSession(
+        jti_hash=auth.hash_token_jti(payload["jti"]), user_id=user.id,
+        expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+    )
+    db.add(session)
+    return session
 
 @router.post("/register", response_model=schemas.UserResponse)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
@@ -33,8 +43,11 @@ def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
             detail="Invalid credentials"
         )
     
-    access_token = auth.create_access_token(data={"sub": db_user.username})
-    refresh_token = auth.create_refresh_token(data={"sub": db_user.username})
+    claims = {"sub": db_user.username, "ver": db_user.token_version}
+    access_token = auth.create_access_token(data=claims)
+    refresh_token = auth.create_refresh_token(data=claims)
+    _store_refresh_session(db, db_user, refresh_token)
+    db.commit()
     
     return {
         "access_token": access_token,
@@ -58,11 +71,18 @@ def refresh_token(token_data: schemas.TokenRefresh, db: Session = Depends(get_db
             detail="Invalid refresh token"
         )
     db_user = db.query(models.User).filter(models.User.username == username).first()
-    if not db_user or not db_user.is_active:
+    jti_hash = auth.hash_token_jti(payload.get("jti", ""))
+    session = db.query(models.RefreshSession).filter(models.RefreshSession.jti_hash == jti_hash).with_for_update().first()
+    if not db_user or not db_user.is_active or payload.get("ver", 0) != db_user.token_version or not session or session.revoked_at:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
-    access_token = auth.create_access_token(data={"sub": username})
-    refresh_token = auth.create_refresh_token(data={"sub": username})
+    claims = {"sub": username, "ver": db_user.token_version}
+    access_token = auth.create_access_token(data=claims)
+    refresh_token = auth.create_refresh_token(data=claims)
+    replacement = _store_refresh_session(db, db_user, refresh_token)
+    session.revoked_at = datetime.now(timezone.utc)
+    session.replaced_by_hash = replacement.jti_hash
+    db.commit()
     
     return {
         "access_token": access_token,
@@ -98,7 +118,7 @@ def password_reset(reset_data: schemas.PasswordReset, db: Session = Depends(get_
     reset_token = db.query(models.PasswordResetToken).filter(
         models.PasswordResetToken.token == reset_data.token,
         models.PasswordResetToken.used == False,
-        models.PasswordResetToken.expires_at > datetime.utcnow()
+        models.PasswordResetToken.expires_at > datetime.now(timezone.utc)
     ).first()
     
     if not reset_token:
@@ -109,6 +129,8 @@ def password_reset(reset_data: schemas.PasswordReset, db: Session = Depends(get_
     
     # Update user password
     reset_token.user.hashed_password = auth.get_password_hash(reset_data.new_password)
+    reset_token.user.token_version += 1
+    db.query(models.RefreshSession).filter(models.RefreshSession.user_id == reset_token.user_id, models.RefreshSession.revoked_at.is_(None)).update({"revoked_at": datetime.now(timezone.utc)})
     reset_token.used = True
     db.commit()
     
@@ -125,8 +147,10 @@ def get_current_user_info(current_user: models.User = Depends(get_current_user))
     }
 
 @router.post("/logout")
-def logout(current_user: models.User = Depends(get_current_user)):
-
+def logout(_csrf: None = Depends(require_csrf), db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    current_user.token_version += 1
+    db.query(models.RefreshSession).filter(models.RefreshSession.user_id == current_user.id, models.RefreshSession.revoked_at.is_(None)).update({"revoked_at": datetime.now(timezone.utc)})
+    db.commit()
     return {"message": "Logged out successfully"}
 
 @router.get("/export")

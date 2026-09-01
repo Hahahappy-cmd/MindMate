@@ -5,6 +5,8 @@ from fastapi import HTTPException, status
 from typing import Optional, Dict, Any
 from .config import settings
 import logging
+import hashlib
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
         "exp": expire,
         "type": "access",
         "iat": datetime.now(timezone.utc)
+        ,"jti": str(uuid.uuid4()), "iss": settings.jwt_issuer, "aud": settings.jwt_audience
     })
     
     try:
@@ -86,6 +89,7 @@ def create_refresh_token(data: Dict[str, Any], expires_delta: Optional[timedelta
         "exp": expire,
         "type": "refresh",
         "iat": datetime.now(timezone.utc)
+        ,"jti": str(uuid.uuid4()), "iss": settings.jwt_issuer, "aud": settings.jwt_audience
     })
     
     try:
@@ -111,6 +115,8 @@ def verify_token(token: str, is_refresh: bool = False) -> Optional[Dict[str, Any
             token, 
             secret_key, 
             algorithms=[ALGORITHM],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
             options={"verify_exp": True}
         )
         
@@ -120,6 +126,8 @@ def verify_token(token: str, is_refresh: bool = False) -> Optional[Dict[str, Any
         
         if token_type != expected_type:
             logger.debug("Invalid token type")
+            return None
+        if not payload.get("sub") or not payload.get("jti"):
             return None
         
         return payload
@@ -157,6 +165,10 @@ def refresh_access_token(refresh_token: str) -> Optional[str]:
         logger.exception("Could not refresh access token")
         return None
 
+
+def hash_token_jti(jti: str) -> str:
+    return hashlib.sha256(jti.encode("utf-8")).hexdigest()
+
 def decode_token(token: str, is_refresh: bool = False) -> Optional[Dict[str, Any]]:
     """
     Decode token without verification (use for debugging only)
@@ -167,7 +179,7 @@ def decode_token(token: str, is_refresh: bool = False) -> Optional[Dict[str, Any
             token, 
             secret_key, 
             algorithms=[ALGORITHM],
-            options={"verify_exp": False, "verify_signature": False}
+            options={"verify_exp": False, "verify_signature": False, "verify_aud": False, "verify_iss": False}
         )
         return payload
     except Exception as e:

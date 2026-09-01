@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone
 import secrets
 from .config import settings
-from .database import engine, migrate_existing_sqlite_schema
+from .database import engine
 from . import models
 
 # Import routers
@@ -18,21 +20,25 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Create database tables
-models.Base.metadata.create_all(bind=engine)
-migrate_existing_sqlite_schema()
-
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[value.strip() for value in settings.allowed_origins.split(",") if value.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=[value.strip() for value in settings.trusted_hosts.split(",") if value.strip()])
 
 @app.middleware("http")
 async def ensure_csrf_cookie(request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > settings.max_request_bytes:
+                return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        except ValueError:
+            return JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
     csrf_token = request.cookies.get("csrf_token")
     should_set_csrf = bool(request.cookies.get("access_token") and not csrf_token)
     if should_set_csrf:
@@ -43,6 +49,9 @@ async def ensure_csrf_cookie(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    if request.url.path.startswith("/api/") or request.cookies.get("access_token"):
+        response.headers["Cache-Control"] = "no-store"
     if should_set_csrf:
         response.set_cookie(
             "csrf_token",

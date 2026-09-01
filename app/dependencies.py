@@ -86,13 +86,15 @@ def get_current_user(
             raise credentials_exception
         
         user = db.query(models.User).filter(models.User.username == username).first()
-        if not user or not user.is_active:
+        if not user or not user.is_active or payload.get("ver", 0) != user.token_version:
             raise credentials_exception
         
         return user if user and user.is_active else None
         
-    except Exception as e:
-        logger.error(f"Authentication error: {e}")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.warning("Authentication processing failed")
         raise credentials_exception
 
 def get_current_user_optional(
@@ -126,8 +128,8 @@ def get_current_user_optional(
             return None
         
         user = db.query(models.User).filter(models.User.username == username).first()
-        return user
+        return user if user and user.is_active and payload.get("ver", 0) == user.token_version else None
         
-    except Exception as e:
-        logger.debug(f"Optional auth error: {e}")
+    except Exception:
+        logger.debug("Optional authentication failed")
         return None

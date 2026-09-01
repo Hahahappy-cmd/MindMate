@@ -32,7 +32,7 @@ def generate_weekly_summary(entries: List[Dict]) -> Dict[str, Any]:
         emotion_data = entry.get('emotion_data')
         if emotion_data:
             try:
-                emotions = json.loads(emotion_data)
+                emotions = emotion_data if isinstance(emotion_data, dict) else json.loads(emotion_data)
                 for emotion, score in emotions.items():
                     all_emotions[emotion] = all_emotions.get(emotion, 0) + score
             except (TypeError, json.JSONDecodeError):

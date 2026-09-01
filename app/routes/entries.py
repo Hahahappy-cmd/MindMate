@@ -56,6 +56,8 @@ def serialize_entry(entry: models.JournalEntry) -> dict:
     def load_json(value, fallback):
         if not value:
             return fallback
+        if isinstance(value, (dict, list)):
+            return value
         try:
             return json.loads(value)
         except (TypeError, json.JSONDecodeError):
@@ -186,7 +188,7 @@ def get_emotion_trends(
         emotions = {}
         if entry.emotion_data:
             try:
-                emotions = json.loads(entry.emotion_data)
+                emotions = entry.emotion_data if isinstance(entry.emotion_data, dict) else json.loads(entry.emotion_data)
             except (TypeError, json.JSONDecodeError):
                 pass
         
@@ -240,7 +242,8 @@ def get_dashboard_analytics(
                 weekday_values[entry.created_at.weekday()].append(entry.sentiment_score)
         if entry.emotion_data:
             try:
-                for name, score in json.loads(entry.emotion_data).items():
+                data = entry.emotion_data if isinstance(entry.emotion_data, dict) else json.loads(entry.emotion_data)
+                for name, score in data.items():
                     emotions[name] = emotions.get(name, 0) + score
             except (TypeError, json.JSONDecodeError):
                 pass
@@ -253,7 +256,7 @@ def get_dashboard_analytics(
     weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     return {
         "total_entries": len(entries),
-        "entries_this_week": sum(1 for e in entries if e.created_at and e.created_at >= week_start.replace(tzinfo=None)),
+        "entries_this_week": sum(1 for e in entries if e.created_at and e.created_at >= week_start),
         "current_streak": streak,
         "average_sentiment": round(sum(e.sentiment_score for e in sentiment_entries) / len(sentiment_entries), 3) if sentiment_entries else None,
         "sentiment_over_time": [{"date": e.created_at.isoformat(), "score": e.sentiment_score, "label": e.sentiment_label} for e in sentiment_entries],

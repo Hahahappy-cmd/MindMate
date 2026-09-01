@@ -11,6 +11,16 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     cookie_secure: bool = False
+    cookie_samesite: str = "lax"
+    cookie_domain: str | None = None
+    database_url: str
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
+    jwt_issuer: str = "mindmate"
+    jwt_audience: str = "mindmate-api"
+    allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    trusted_hosts: str = "localhost,127.0.0.1,testserver"
+    max_request_bytes: int = 262144
     emotion_model_name: str = "SamLowe/roberta-base-go_emotions"
     emotion_model_revision: str = "1895400d2daef02be65e8f3c24559e0aa09d5d25"
     emotion_threshold: float = 0.5
@@ -34,11 +44,21 @@ class Settings(BaseSettings):
     )
 
     def validate_production(self) -> None:
+        if not self.database_url.startswith(("postgresql://", "postgresql+psycopg://")):
+            raise RuntimeError("DATABASE_URL must use PostgreSQL with psycopg")
+        if self.cookie_samesite.lower() not in {"lax", "strict", "none"}:
+            raise RuntimeError("COOKIE_SAMESITE must be lax, strict, or none")
         if self.environment.lower() == "production":
             if "development" in self.jwt_secret_key or "development" in self.refresh_jwt_secret_key:
                 raise RuntimeError("Production JWT secrets must be configured")
             if not self.cookie_secure:
                 raise RuntimeError("COOKIE_SECURE must be enabled in production")
+            if len(self.jwt_secret_key) < 32 or len(self.refresh_jwt_secret_key) < 32:
+                raise RuntimeError("Production JWT secrets must be at least 32 characters")
+            if self.jwt_secret_key == self.refresh_jwt_secret_key:
+                raise RuntimeError("Access and refresh JWT secrets must be independent")
+            if any(host in {"localhost", "127.0.0.1", "testserver"} for host in self.trusted_hosts.split(",")):
+                raise RuntimeError("Production TRUSTED_HOSTS must be configured explicitly")
 
 
 @lru_cache
