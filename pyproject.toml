@@ -35,4 +35,4 @@ dev = ["httpx==0.28.1", "pytest==9.0.2"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-markers = ["slow: requires the downloaded transformer model"]
+markers = ["slow: requires the downloaded transformer model", "integration: requires real external test services"]

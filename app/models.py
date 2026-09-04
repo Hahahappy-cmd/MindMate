@@ -79,10 +79,10 @@ class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
     
     id = Column(Integer, primary_key=True)
-    token = Column(String, unique=True, nullable=False)
+    token_hash = Column(String(64), unique=True, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     expires_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc) + timedelta(hours=1), nullable=False)
-    used = Column(Boolean, default=False, nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     
     user = relationship("User", back_populates="reset_tokens")
@@ -93,6 +93,7 @@ class RefreshSession(Base):
 
     id = Column(Integer, primary_key=True)
     jti_hash = Column(String(64), unique=True, nullable=False)
+    family_id = Column(String(36), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     revoked_at = Column(DateTime(timezone=True), nullable=True)

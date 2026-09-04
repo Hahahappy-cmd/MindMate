@@ -21,6 +21,22 @@ from app.main import app
 from app.models import JournalEntry
 
 
+class FakeRateRedis:
+    def __init__(self):
+        self.values = {}
+
+    def eval(self, _script, _key_count, key, _seconds):
+        self.values[key] = self.values.get(key, 0) + 1
+        return self.values[key]
+
+
+@pytest.fixture(autouse=True)
+def isolated_rate_limiter(monkeypatch):
+    fake = FakeRateRedis()
+    monkeypatch.setattr("app.rate_limit.get_redis_connection", lambda: fake)
+    return fake
+
+
 @pytest.fixture(scope="session", autouse=True)
 def migrated_database():
     root = Path(__file__).resolve().parents[1]

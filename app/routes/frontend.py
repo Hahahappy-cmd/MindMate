@@ -11,6 +11,7 @@ from .. import models
 from ..auth import create_access_token
 from ..config import settings
 from ..services.users import authenticate_user, create_user, find_existing_user
+from ..rate_limit import rate_limit
 
 router = APIRouter(tags=["frontend"])
 
@@ -88,7 +89,7 @@ async def weekly_summary_page(request: Request, current_user: models.User = Depe
         return RedirectResponse(url="/login")
     return templates.TemplateResponse(request, "summary.html", {"current_user": current_user})
 
-@router.post("/register")
+@router.post("/register", dependencies=[Depends(rate_limit("rate_limit_register", "form-register"))])
 async def register_post(
     request: Request,
     username: str = Form(...),
@@ -160,7 +161,7 @@ async def register_post(
     response = RedirectResponse(url="/login?registered=true", status_code=303)
     return response
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(rate_limit("rate_limit_login", "form-login"))])
 async def login_post(
     request: Request,
     username: str = Form(...),

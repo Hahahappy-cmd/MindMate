@@ -6,7 +6,7 @@
 <div class="surface" style="border-color:rgba(251,113,133,.28)"><div class="panel-header"><div><span class="tech-label" style="color:#fda4af">Destructive action</span><h2>Delete account</h2></div><span class="panel-meta">PERMANENT</span></div><div class="panel-body"><p class="text-secondary">This permanently deletes your account and all journal entries. Enter your password to confirm.</p><div class="d-flex gap-2 flex-wrap"><label class="visually-hidden" for="delete-password">Password</label><input id="delete-password" type="password" class="form-control" style="max-width:360px" placeholder="Current password" autocomplete="current-password"><button id="delete-account" class="btn btn-outline-danger">Delete my account</button></div></div></div>
 </div></section>
 {% endblock %}
-{% block scripts %}<script>
+{% block scripts %}<script nonce="{{ request.state.csp_nonce }}">
 document.getElementById('export').addEventListener('click',async()=>{const r=await fetch('/api/users/export');if(!r.ok)return alert('Export failed.');const blob=new Blob([JSON.stringify(await r.json(),null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mindmate-export.json';a.click();URL.revokeObjectURL(a.href)});
 document.getElementById('delete-account').addEventListener('click',async()=>{if(!confirm('Permanently delete your account and all entries?'))return;const r=await csrfFetch('/api/users/me',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('delete-password').value})});if(r.ok)location.replace('/');else alert((await r.json()).detail||'Deletion failed.')});
 </script>{% endblock %}

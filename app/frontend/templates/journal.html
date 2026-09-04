@@ -20,7 +20,7 @@
 </div></section>
 {% endblock %}
 {% block scripts %}
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
 const form=document.getElementById('newEntryForm'),content=document.getElementById('content');
 function sentimentClass(label){return label?.includes('positive')?'badge-positive':label?.includes('negative')?'badge-negative':'badge-neutral'}
 function entryRow(e){const state=e.analysis_state==='completed'?(e.sentiment_label||'complete'):e.analysis_state==='failed'?'analysis failed':'AI processing';return `<a class="entry-row" href="/journal/${e.id}"><div><h3 class="entry-title">${escapeHtml(e.title)}</h3><p class="entry-preview">${escapeHtml(e.content)}</p><div class="entry-meta"><span class="badge-signal ${sentimentClass(e.sentiment_label)}">${escapeHtml(state)}</span>${e.dominant_emotion?`<span class="badge-signal">${escapeHtml(e.dominant_emotion)}</span>`:''}</div></div><time class="timestamp">${new Date(e.created_at).toLocaleString()}</time></a>`}

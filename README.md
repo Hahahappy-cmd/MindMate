@@ -158,14 +158,16 @@ and refresh secrets, and non-PostgreSQL database URLs. Configure at least:
 
 ```env
 ENVIRONMENT=production
-DATABASE_URL=postgresql+psycopg://...
+DATABASE_URL=postgresql+psycopg://...?sslmode=require
 JWT_SECRET_KEY=<independent random value of at least 32 characters>
 REFRESH_JWT_SECRET_KEY=<different random value of at least 32 characters>
-REDIS_URL=redis://...
+REDIS_URL=rediss://default:strong-password@redis.example.com:6379/0
 COOKIE_SECURE=true
 COOKIE_SAMESITE=lax
 TRUSTED_HOSTS=journal.example.com
 ALLOWED_ORIGINS=https://journal.example.com
+PASSWORD_RESET_ENABLED=false
+TRUST_PROXY_HEADERS=true
 ```
 
 Access JWTs include issuer, audience, JTI, expiration, token type, and per-user
@@ -268,4 +270,60 @@ tests/                  # Automated test suite
 
 ## Production notes
 
-Production mode requires non-development JWT secrets and secure cookies. Before a public deployment, the next infrastructure steps are Alembic migrations, PostgreSQL, refresh-session revocation, rate limiting, a production process manager, and CI/CD.
+Production mode requires non-development JWT secrets, secure cookies, encrypted
+database/Redis connections, explicit hosts, and a production process manager.
+
+## Pre-deployment operations
+
+Production additionally requires PostgreSQL TLS (`sslmode=require`, `verify-ca`,
+or `verify-full`) and authenticated Redis TLS (`rediss://`). Only enable
+`TRUST_PROXY_HEADERS` behind a trusted reverse proxy that overwrites forwarded
+client-address headers. Authentication limits use configurable Redis fixed
+windows; journal CRUD is not limited. Limiter infrastructure failure is
+deliberately fail-open so users are not globally locked out, and must be monitored.
+
+Refresh-token rotations retain a family identifier. Replay of any rotated member
+revokes all remaining descendants in that family. Password-reset credentials are
+stored only as SHA-256 hashes, expire, are one-time use, and supersede older reset
+credentials. Because authenticated email delivery is not implemented, production
+must keep `PASSWORD_RESET_ENABLED=false`; only development returns a token for
+local testing.
+
+Recover a database commit whose AI enqueue failed, or a worker that died while a
+job was processing, with the generation-safe reconciliation command:
+
+```bash
+python -m app.maintenance recover-analysis
+```
+
+Run expired security-record cleanup periodically:
+
+```bash
+python -m app.maintenance cleanup-security
+```
+
+The defaults retain expired refresh-session records for 30 days and expired reset
+records for 7 days. Journal content remains until its owner deletes the entry or
+account. RQ results expire after one hour and failures after one day.
+
+For the real queue integration test, use isolated test resources:
+
+```bash
+TEST_DATABASE_URL=postgresql+psycopg://YOUR_MACOS_USERNAME@localhost:5432/mindmate_test \
+TEST_REDIS_URL=redis://localhost:6379/15 \
+python -m pytest tests/test_rq_integration.py
+```
+
+Never point test variables at production resources. Store secrets only in
+environment variables or a managed secret store; `.env` is ignored. Rotate access
+JWT, refresh JWT, PostgreSQL, and Redis credentials independently. JWT-secret
+rotation invalidates existing sessions.
+
+Enable encrypted PostgreSQL backups before accepting private writing. Restrict
+backup access and retention because backups contain journal content. Regularly
+restore into an isolated database, run `alembic current`, compare expected row
+counts, test login and an owner-scoped journal read, then securely remove the
+verification database. Use a least-privilege application role and, where
+available, a separate schema-migration role. Operational logs must not contain
+journal content, raw tokens, authorization headers, connection URLs, or backup
+credentials.

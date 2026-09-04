@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 
 class Settings(BaseSettings):
@@ -36,6 +37,18 @@ class Settings(BaseSettings):
     ai_queue_name: str = "mindmate-ai"
     ai_job_timeout_seconds: int = 600
     ai_job_max_retries: int = 3
+    trust_proxy_headers: bool = False
+    rate_limit_enabled: bool = True
+    rate_limit_login: str = "10/60"
+    rate_limit_register: str = "5/300"
+    rate_limit_refresh: str = "30/60"
+    rate_limit_password_reset_request: str = "5/900"
+    rate_limit_password_reset_submit: str = "10/900"
+    password_reset_enabled: bool = True
+    password_reset_expire_minutes: int = 60
+    stale_analysis_minutes: int = 10
+    refresh_session_retention_days: int = 30
+    reset_token_retention_days: int = 7
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parent.parent / ".env",
@@ -49,6 +62,13 @@ class Settings(BaseSettings):
         if self.cookie_samesite.lower() not in {"lax", "strict", "none"}:
             raise RuntimeError("COOKIE_SAMESITE must be lax, strict, or none")
         if self.environment.lower() == "production":
+            database_query = dict(make_url(self.database_url).query)
+            ssl_mode = database_query.get("sslmode", "").lower()
+            if ssl_mode not in {"require", "verify-ca", "verify-full"}:
+                raise RuntimeError("Production DATABASE_URL must require PostgreSQL TLS")
+            redis_url = make_url(self.redis_url)
+            if redis_url.drivername != "rediss" or not redis_url.password:
+                raise RuntimeError("Production REDIS_URL must use authenticated rediss:// TLS")
             if "development" in self.jwt_secret_key or "development" in self.refresh_jwt_secret_key:
                 raise RuntimeError("Production JWT secrets must be configured")
             if not self.cookie_secure:
@@ -59,6 +79,8 @@ class Settings(BaseSettings):
                 raise RuntimeError("Access and refresh JWT secrets must be independent")
             if any(host in {"localhost", "127.0.0.1", "testserver"} for host in self.trusted_hosts.split(",")):
                 raise RuntimeError("Production TRUSTED_HOSTS must be configured explicitly")
+            if self.password_reset_enabled:
+                raise RuntimeError("PASSWORD_RESET_ENABLED must remain false until secure token delivery is configured")
 
 
 @lru_cache

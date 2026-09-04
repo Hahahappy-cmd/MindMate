@@ -15,7 +15,7 @@ def test_refresh_rotation_rejects_replay(client, registered_user):
     rotated = client.post("/api/users/refresh", json={"refresh_token": login["refresh_token"]})
     assert rotated.status_code == 200
     assert client.post("/api/users/refresh", json={"refresh_token": login["refresh_token"]}).status_code == 401
-    assert client.post("/api/users/refresh", json={"refresh_token": rotated.json()["refresh_token"]}).status_code == 200
+    assert client.post("/api/users/refresh", json={"refresh_token": rotated.json()["refresh_token"]}).status_code == 401
 
 
 def test_api_logout_invalidates_access_and_refresh(client, registered_user):
@@ -69,11 +69,23 @@ def test_production_configuration_fails_closed():
     with pytest.raises(RuntimeError):
         Settings(environment="production", database_url="mysql://db/mindmate", _env_file=None).validate_production()
     secure = Settings(
-        environment="production", database_url="postgresql://user:pass@db/mindmate",
+        environment="production", database_url="postgresql://user:pass@db/mindmate?sslmode=require",
+        redis_url="rediss://default:secret@redis.example.com:6379/0", password_reset_enabled=False,
         jwt_secret_key="a" * 48, refresh_jwt_secret_key="b" * 48,
         cookie_secure=True, trusted_hosts="journal.example.com", _env_file=None,
     )
     secure.validate_production()
+
+
+def test_production_rejects_insecure_database_and_redis_urls():
+    common = dict(
+        environment="production", jwt_secret_key="a" * 48, refresh_jwt_secret_key="b" * 48,
+        cookie_secure=True, trusted_hosts="journal.example.com", password_reset_enabled=False, _env_file=None,
+    )
+    with pytest.raises(RuntimeError, match="PostgreSQL TLS"):
+        Settings(database_url="postgresql://user:pass@db/mindmate", redis_url="rediss://default:secret@redis:6379", **common).validate_production()
+    with pytest.raises(RuntimeError, match="authenticated rediss"):
+        Settings(database_url="postgresql://user:pass@db/mindmate?sslmode=require", redis_url="redis://redis:6379/0", **common).validate_production()
 
 
 def test_database_url_is_required_and_must_be_postgresql(monkeypatch):

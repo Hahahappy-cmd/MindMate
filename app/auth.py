@@ -169,6 +169,10 @@ def refresh_access_token(refresh_token: str) -> Optional[str]:
 def hash_token_jti(jti: str) -> str:
     return hashlib.sha256(jti.encode("utf-8")).hexdigest()
 
+
+def hash_opaque_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
 def decode_token(token: str, is_refresh: bool = False) -> Optional[Dict[str, Any]]:
     """
     Decode token without verification (use for debugging only)

@@ -30,7 +30,7 @@
 {% endblock %}
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
 function sentimentBadge(label){return label?.includes('positive')?'badge-positive':label?.includes('negative')?'badge-negative':'badge-neutral'}
 function recentRow(e){const state=e.analysis_state==='completed'?(e.sentiment_label||'complete'):e.analysis_state==='failed'?'analysis failed':'AI processing';return `<a class="entry-row" href="/journal/${e.id}"><div><h3 class="entry-title">${escapeHtml(e.title)}</h3><div class="entry-meta"><span class="badge-signal ${sentimentBadge(e.sentiment_label)}">${escapeHtml(state)}</span>${e.dominant_emotion?`<span class="badge-signal">${escapeHtml(e.dominant_emotion)}</span>`:''}</div></div><time class="timestamp">${new Date(e.created_at).toLocaleDateString()}</time></a>`}
 let charts=[];function clearCharts(){charts.forEach(chart=>chart.destroy());charts=[]}

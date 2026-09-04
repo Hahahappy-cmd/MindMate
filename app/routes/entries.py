@@ -47,8 +47,8 @@ def enqueue_or_mark_failed(entry: models.JournalEntry, generation: str, db: Sess
         entry.analysis_job_id = enqueue_analysis_job(entry.id, generation)
     except Exception as exc:
         logger.warning("Could not enqueue AI analysis for entry %s: %s", entry.id, type(exc).__name__)
-        entry.analysis_state = "failed"
-        entry.analysis_error = "AI analysis could not be queued. Please try editing the entry again."
+        entry.analysis_state = "pending"
+        entry.analysis_error = "AI analysis is waiting to be queued."
     db.commit()
     db.refresh(entry)
 

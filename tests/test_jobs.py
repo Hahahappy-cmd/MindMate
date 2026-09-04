@@ -87,7 +87,8 @@ def test_edit_supersedes_old_job(client, auth_headers, db_session, monkeypatch):
 def test_queue_failure_is_stored_safely(client, auth_headers, monkeypatch):
     monkeypatch.setattr("app.routes.entries.enqueue_analysis_job", lambda *_args: (_ for _ in ()).throw(ConnectionError("redis secret")))
     entry = create_pending(client, auth_headers)
-    assert entry["analysis_state"] == "failed"
+    assert entry["analysis_state"] == "pending"
+    assert "waiting to be queued" in entry["analysis_error"]
     assert "redis secret" not in entry["analysis_error"]
 
 

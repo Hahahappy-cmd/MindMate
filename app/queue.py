@@ -5,6 +5,8 @@ from functools import lru_cache
 from redis import Redis
 from rq import Queue, Retry
 from rq.exceptions import DuplicateJobError
+from rq.job import Job
+from rq.exceptions import NoSuchJobError
 from rq.serializers import JSONSerializer
 
 from .config import settings
@@ -24,10 +26,17 @@ def analysis_job_id(entry_id: int, generation: str) -> str:
     return f"entry-{entry_id}-{generation}"
 
 
-def enqueue_analysis_job(entry_id: int, generation: str) -> str:
+def enqueue_analysis_job(entry_id: int, generation: str, replace_terminal: bool = False) -> str:
     from .jobs import analyze_journal_entry
 
     job_id = analysis_job_id(entry_id, generation)
+    if replace_terminal:
+        try:
+            existing = Job.fetch(job_id, connection=get_redis_connection(), serializer=JSONSerializer)
+            if existing.get_status(refresh=True) in {"finished", "failed", "stopped", "canceled"}:
+                existing.delete()
+        except NoSuchJobError:
+            pass
     try:
         retry_intervals = [min(300, 10 * (3 ** index)) for index in range(settings.ai_job_max_retries)]
         get_ai_queue().enqueue(

@@ -40,6 +40,8 @@ async def ensure_csrf_cookie(request, call_next):
         except ValueError:
             return JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
     csrf_token = request.cookies.get("csrf_token")
+    csp_nonce = secrets.token_urlsafe(18)
+    request.state.csp_nonce = csp_nonce
     should_set_csrf = bool(request.cookies.get("access_token") and not csrf_token)
     if should_set_csrf:
         csrf_token = secrets.token_urlsafe(32)
@@ -49,7 +51,12 @@ async def ensure_csrf_cookie(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    response.headers["Content-Security-Policy"] = (
+        f"default-src 'self'; script-src 'self' 'nonce-{csp_nonce}' https://cdn.jsdelivr.net; "
+        "style-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; "
+        "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data:; "
+        "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    )
     if request.url.path.startswith("/api/") or request.cookies.get("access_token"):
         response.headers["Cache-Control"] = "no-store"
     if should_set_csrf:
