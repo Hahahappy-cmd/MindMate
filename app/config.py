@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     cookie_samesite: str = "lax"
     cookie_domain: str | None = None
     database_url: str
-    database_pool_size: int = 5
-    database_max_overflow: int = 10
+    database_pool_size: int = 2
+    database_max_overflow: int = 1
     jwt_issuer: str = "mindmate"
     jwt_audience: str = "mindmate-api"
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"

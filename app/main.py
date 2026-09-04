@@ -5,8 +5,10 @@ from starlette.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone
 import secrets
+from sqlalchemy import text
 from .config import settings
 from .database import engine
+from .queue import get_redis_connection
 from . import models
 
 # Import routers
@@ -88,6 +90,27 @@ async def health_check():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": "5.0.0"
     }
+
+
+@app.get("/ready")
+def readiness_check():
+    """Report dependency readiness without exposing connection details."""
+    checks = {"postgresql": False, "redis": False}
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        checks["postgresql"] = True
+    except Exception:
+        pass
+    try:
+        checks["redis"] = bool(get_redis_connection().ping())
+    except Exception:
+        pass
+    healthy = all(checks.values())
+    return JSONResponse(
+        {"status": "ready" if healthy else "not_ready", "checks": checks},
+        status_code=200 if healthy else 503,
+    )
 
 @app.get("/api/")
 async def api_root():

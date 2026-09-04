@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: mindmate-web
+    runtime: python
+    plan: free
+    buildCommand: python -m pip install .
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    # Liveness avoids spending the Upstash Free command budget on frequent probes.
+    # Use /ready manually to verify PostgreSQL and Redis together.
+    healthCheckPath: /health
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_POOL_SIZE
+        value: "2"
+      - key: DATABASE_MAX_OVERFLOW
+        value: "1"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: lax
+      - key: PASSWORD_RESET_ENABLED
+        value: "false"
+      - key: TRUST_PROXY_HEADERS
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: REFRESH_JWT_SECRET_KEY
+        sync: false
+      - key: TRUSTED_HOSTS
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false

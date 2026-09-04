@@ -48,7 +48,7 @@ createdb mindmate_test
 cd MIndMate
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[dev]'
+python -m pip install -e '.[dev,worker]'
 cp .env.example .env
 ```
 
@@ -84,6 +84,7 @@ Open:
 - Application: <http://127.0.0.1:8000>
 - API documentation: <http://127.0.0.1:8000/docs>
 - Health check: <http://127.0.0.1:8000/health>
+- Dependency readiness: <http://127.0.0.1:8000/ready>
 
 Run `alembic upgrade head` before starting the API or worker after installing or
 updating the project. Startup fails if `DATABASE_URL` is missing or does not use
@@ -267,6 +268,13 @@ app/
 └── schemas.py          # API contracts
 tests/                  # Automated test suite
 ```
+
+## Free deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the manual Render Free + Neon Free +
+Upstash Free + Oracle Always Free A1 deployment sequence. The base installation
+contains the web runtime; install `.[worker]` only on the Oracle worker so Render
+does not download PyTorch or Transformers.
 
 ## Production notes
 

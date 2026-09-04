@@ -1,0 +1,16 @@
+[Unit]
+Description=Clean expired MindMate security records
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=mindmate
+Group=mindmate
+WorkingDirectory=/opt/mindmate/current
+EnvironmentFile=/etc/mindmate/worker.env
+ExecStart=/opt/mindmate/venv/bin/python -m app.maintenance cleanup-security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/cache/mindmate

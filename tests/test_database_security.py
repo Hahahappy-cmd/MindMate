@@ -49,6 +49,13 @@ def test_security_headers_request_limit_and_host(client):
     assert client.get("/", headers={"host": "evil.example"}).status_code == 400
 
 
+def test_readiness_checks_postgresql_and_redis(client, monkeypatch):
+    monkeypatch.setattr("app.main.get_redis_connection", lambda: type("Redis", (), {"ping": lambda self: True})())
+    response = client.get("/ready")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready", "checks": {"postgresql": True, "redis": True}}
+
+
 def test_database_constraints(db_session, registered_user):
     user = db_session.query(models.User).one()
     db_session.add(models.JournalEntry(title="Bad", content="Bad", user_id=user.id, analysis_state="unknown", analysis_attempts=0))

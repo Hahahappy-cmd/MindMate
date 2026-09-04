@@ -1,0 +1,16 @@
+[Unit]
+Description=Recover stale MindMate AI analysis jobs
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=mindmate
+Group=mindmate
+WorkingDirectory=/opt/mindmate/current
+EnvironmentFile=/etc/mindmate/worker.env
+ExecStart=/opt/mindmate/venv/bin/python -m app.maintenance recover-analysis
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/cache/mindmate
